@@ -443,15 +443,11 @@ main() {
     create_wrapper
     setup_shell_path
     
-    if [ "$IS_ROOT" = true ]; then
-        install_systemd
-    fi
-    
     echo ""
     print_success "Installation complete!"
     echo ""
     
-    # Run interactive setup
+    # Run interactive setup (which will handle service installation)
     run_setup
     
     echo ""
