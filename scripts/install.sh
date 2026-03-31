@@ -108,6 +108,129 @@ check_git() {
     print_success "git found"
 }
 
+# Check for existing installation and ask user what to do
+check_existing_installation() {
+    if [ -d "$INSTALL_DIR/.git" ] || [ -f "$CONFIG_DIR/config.yaml" ]; then
+        print_info "Existing OpenBridge installation detected!"
+        echo ""
+        echo "What would you like to do?"
+        echo "  1) Smart Update - Keep config, update code only (fast)"
+        echo "  2) Clean Install - Fresh start, erase everything"
+        echo "  3) Cancel - Exit without changes"
+        echo ""
+        
+        if [ -t 0 ]; then
+            # Interactive mode
+            read -p "Enter choice [1-3]: " choice
+        else
+            # Non-interactive: default to smart update
+            choice="1"
+            print_info "Non-interactive mode: defaulting to Smart Update"
+        fi
+        
+        case "$choice" in
+            1)
+                print_info "Smart Update selected - preserving configuration..."
+                smart_update
+                exit 0
+                ;;
+            2)
+                print_info "Clean Install selected - removing old installation..."
+                full_cleanup
+                ;;
+            3|*)
+                print_info "Installation cancelled"
+                exit 0
+                ;;
+        esac
+    fi
+}
+
+# Smart update - keeps config, updates code only
+smart_update() {
+    print_step "Updating OpenBridge..."
+    
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        cd "$INSTALL_DIR"
+        
+        # Fix git ownership for root
+        if [ "$IS_ROOT" = true ]; then
+            git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+        fi
+        
+        # Pull latest changes
+        if git pull; then
+            print_success "Code updated successfully"
+        else
+            print_error "Update failed - repository may be corrupted"
+            echo "Run with Clean Install option to fix"
+            exit 1
+        fi
+        
+        # Update virtual environment
+        if [ "$IS_ROOT" = true ]; then
+            su -s /bin/bash "$SERVICE_USER" -c "
+                source $VENV_DIR/bin/activate
+                pip install -e $INSTALL_DIR --quiet
+            "
+        else
+            source "$VENV_DIR/bin/activate"
+            pip install -e "$INSTALL_DIR" --quiet
+        fi
+        
+        print_success "Dependencies updated"
+        
+        # Restart service if running
+        if command -v systemctl &> /dev/null; then
+            if systemctl is-active --quiet openbridge 2>/dev/null; then
+                print_step "Restarting service..."
+                if [ "$IS_ROOT" = true ]; then
+                    systemctl restart openbridge
+                else
+                    sudo systemctl restart openbridge
+                fi
+                print_success "Service restarted"
+            fi
+        fi
+        
+        echo ""
+        print_header "=========================================="
+        print_success "OpenBridge updated successfully!"
+        print_header "=========================================="
+        echo ""
+        echo "Configuration preserved at: $CONFIG_DIR/config.yaml"
+        echo ""
+        
+    else
+        print_error "No existing installation found to update"
+        exit 1
+    fi
+}
+
+# Full cleanup for clean install
+full_cleanup() {
+    print_step "Cleaning up old installation..."
+    
+    # Stop service
+    if command -v systemctl &> /dev/null; then
+        systemctl stop openbridge 2>/dev/null || true
+        systemctl disable openbridge 2>/dev/null || true
+        rm -f /etc/systemd/system/openbridge.service
+        systemctl daemon-reload 2>/dev/null || true
+    fi
+    
+    # Remove directories
+    rm -rf "$INSTALL_DIR"
+    rm -rf "$CONFIG_DIR"
+    
+    # Remove service user (if root install)
+    if [ "$IS_ROOT" = true ]; then
+        userdel "$SERVICE_USER" 2>/dev/null || true
+    fi
+    
+    print_success "Cleanup complete"
+}
+
 # Setup service user for root install
 setup_service_user() {
     if [ "$IS_ROOT" = true ]; then
@@ -432,6 +555,9 @@ main() {
     else
         print_info "Running as user - installing locally"
     fi
+    
+    # Check for existing installation and handle accordingly
+    check_existing_installation
     
     check_python
     check_pip
