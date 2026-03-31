@@ -257,8 +257,102 @@ setup_shell_path() {
     fi
 }
 
+# Check if running interactively
+is_interactive() {
+    [ -t 0 ]
+}
+
+# Create default config
+create_default_config() {
+    print_step "Creating default configuration..."
+    
+    CONFIG_FILE="$CONFIG_DIR/config.yaml"
+    
+    cat > "$CONFIG_FILE" << EOF
+server:
+  host: 0.0.0.0
+  port: 8080
+  workers: 1
+  reload: false
+  log_level: INFO
+
+security:
+  jwt_secret: "$(openssl rand -hex 32)"
+  session_timeout: 3600
+  max_sessions_per_user: 3
+  allowed_commands:
+    - "*"
+  blocked_commands:
+    - "rm -rf /"
+    - "mkfs.*"
+    - "dd if=/dev/zero"
+  require_auth: true
+  encryption_enabled: false
+
+adapters:
+  telegram:
+    enabled: false
+    bot_token: ""
+    allowed_users: []
+    webhook_url: null
+    polling_timeout: 30
+  
+  discord:
+    enabled: false
+    bot_token: ""
+    guild_id: null
+    allowed_roles: []
+    command_prefix: "!"
+  
+  whatsapp:
+    enabled: false
+    session_path: ".whatsapp_session"
+    webhook_url: null
+
+redis:
+  enabled: false
+  host: localhost
+  port: 6379
+  db: 0
+  password: null
+
+features:
+  file_transfer: true
+  session_persistence: true
+  auto_cleanup: true
+  rate_limiting:
+    enabled: true
+    commands_per_minute: 30
+    messages_per_second: 5
+    burst_size: 10
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: null
+  max_bytes: 10485760
+  backup_count: 5
+
+data_dir: $CONFIG_DIR
+EOF
+
+    if [ "$IS_ROOT" = true ]; then
+        chown "$SERVICE_USER:$SERVICE_USER" "$CONFIG_FILE"
+    fi
+    
+    print_success "Default configuration created"
+}
+
 # Run interactive setup
 run_setup() {
+    # Check if running in interactive mode
+    if ! is_interactive; then
+        print_info "Non-interactive mode detected"
+        print_info "Creating default configuration..."
+        create_default_config
+        return
+    fi
+    
     print_header ""
     print_header "=========================================="
     print_header "  INTERACTIVE SETUP WIZARD"
@@ -351,12 +445,37 @@ main() {
     
     echo ""
     print_header "=========================================="
-    print_success "OpenBridge is installed and configured!"
+    print_success "OpenBridge is installed!"
     print_header "=========================================="
     echo ""
     
+    # Check if we ran in non-interactive mode
+    if ! is_interactive; then
+        print_info "Non-interactive installation complete!"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Edit the configuration file:"
+        if [ "$IS_ROOT" = true ]; then
+            echo "     sudo nano $CONFIG_DIR/config.yaml"
+        else
+            echo "     nano $CONFIG_DIR/config.yaml"
+        fi
+        echo ""
+        echo "  2. Add your bot tokens (Telegram/Discord):"
+        echo "     - Telegram: Message @BotFather to create a bot"
+        echo "     - Discord: Go to https://discord.com/developers/applications"
+        echo ""
+        echo "  3. Start OpenBridge:"
+        if [ "$IS_ROOT" = true ]; then
+            echo "     sudo systemctl start openbridge"
+        else
+            echo "     openbridge start"
+        fi
+        echo ""
+    fi
+    
     if [ "$IS_ROOT" = true ]; then
-        echo "System-wide installation complete!"
+        echo "System-wide installation:"
         echo ""
         echo "Commands (run as root or with sudo):"
         echo "  sudo openbridge --help    Show all commands"
@@ -371,7 +490,7 @@ main() {
         echo "Configuration: $CONFIG_DIR/config.yaml"
         echo "Logs: $CONFIG_DIR/logs/"
     else
-        echo "User installation complete!"
+        echo "User installation:"
         echo ""
         echo "Commands available:"
         echo "  openbridge --help    Show all commands"
