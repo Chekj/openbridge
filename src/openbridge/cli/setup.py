@@ -354,6 +354,17 @@ Config Location: {self.config_path}
         """Install and start systemd service."""
         service_file = Path("/etc/systemd/system/openbridge.service")
 
+        # Determine sudo command (skip if already root)
+        sudo_cmd = [] if self.is_root else ["sudo"]
+
+        # Use appropriate user and paths based on installation type
+        if self.is_root:
+            service_user = "openbridge"
+            install_dir = "/opt/openbridge"
+        else:
+            service_user = os.getenv("USER")
+            install_dir = Path.home() / ".local/share/openbridge"
+
         # Create service content
         service_content = f"""[Unit]
 Description=OpenBridge - Remote CLI Bridge
@@ -361,13 +372,13 @@ After=network.target
 
 [Service]
 Type=simple
-User={os.getenv("USER")}
-Group={os.getenv("USER")}
-WorkingDirectory={Path.home()}
-Environment=PATH={Path.home()}/.local/share/openbridge/venv/bin:/usr/local/bin:/usr/bin:/bin
+User={service_user}
+Group={service_user}
+WorkingDirectory={install_dir}
+Environment=PATH={install_dir}/venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 Environment=OB_CONFIG={self.config_path}
-ExecStart={Path.home()}/.local/share/openbridge/venv/bin/openbridge start
+ExecStart={install_dir}/venv/bin/openbridge start
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5s
@@ -382,19 +393,28 @@ WantedBy=multi-user.target
             temp_file = Path("/tmp/openbridge.service")
             temp_file.write_text(service_content)
 
-            # Install with sudo
-            console.print("[dim]Installing service (requires sudo)...[/dim]")
-            subprocess.run(["sudo", "cp", str(temp_file), str(service_file)], check=True)
-            subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True)
-            subprocess.run(["sudo", "systemctl", "enable", "openbridge"], check=True)
-            subprocess.run(["sudo", "systemctl", "start", "openbridge"], check=True)
+            # Install service
+            if self.is_root:
+                console.print("[dim]Installing service...[/dim]")
+            else:
+                console.print("[dim]Installing service (requires sudo)...[/dim]")
+
+            subprocess.run([*sudo_cmd, "cp", str(temp_file), str(service_file)], check=True)
+            subprocess.run([*sudo_cmd, "systemctl", "daemon-reload"], check=True)
+            subprocess.run([*sudo_cmd, "systemctl", "enable", "openbridge"], check=True)
+            subprocess.run([*sudo_cmd, "systemctl", "start", "openbridge"], check=True)
 
             console.print("[green]✓ OpenBridge service installed and started![/green]")
             console.print("")
             console.print("[bold]Service Commands:[/bold]")
-            console.print("  sudo systemctl status openbridge  - Check status")
-            console.print("  sudo systemctl stop openbridge    - Stop service")
-            console.print("  sudo systemctl restart openbridge - Restart service")
+            if self.is_root:
+                console.print("  systemctl status openbridge   - Check status")
+                console.print("  systemctl stop openbridge     - Stop service")
+                console.print("  systemctl restart openbridge  - Restart service")
+            else:
+                console.print("  sudo systemctl status openbridge  - Check status")
+                console.print("  sudo systemctl stop openbridge    - Stop service")
+                console.print("  sudo systemctl restart openbridge - Restart service")
             console.print("  sudo systemctl disable openbridge - Disable auto-start")
 
         except subprocess.CalledProcessError as e:
