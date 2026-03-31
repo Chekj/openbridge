@@ -380,17 +380,70 @@ class MessageRouter:
         await self._send_response(platform, user_id, response)
 
     async def _handle_list_models(self, message: UserMessage, session: UserSession, app) -> None:
-        """Handle /models command - List available models (placeholder)."""
+        """Handle /models command - List available models from API."""
         platform = message.platform
         user_id = message.user_id
 
-        header = app.get_header(session.app_context)
-        response_text = f"{header}\n\n🤖 Available Models:\n\n• kimi-k2.5 (default)\n• gemini-2.5-pro\n• claude-4-sonnet\n\n💡 Model switching coming soon!"
-        footer = app.get_footer(session.app_context)
-        if footer:
-            response_text += f"\n\n{footer}"
+        if hasattr(app, "list_models") and callable(getattr(app, "list_models")):
+            try:
+                models = await app.list_models()
 
-        response = BotResponse(content=response_text)
+                if models:
+                    # Group models by provider
+                    providers = {}
+                    for model in models:
+                        provider_name = model.get("provider_name", "Unknown")
+                        if provider_name not in providers:
+                            providers[provider_name] = []
+                        providers[provider_name].append(model)
+
+                    lines = ["🤖 Available Models by Provider:\n"]
+
+                    for provider_name, provider_models in sorted(providers.items()):
+                        lines.append(f"\n📦 {provider_name}:")
+                        for idx, model in enumerate(
+                            provider_models[:5], 1
+                        ):  # Show max 5 per provider
+                            model_id = model.get("model_id", "unknown")
+                            model_name = model.get("name", model_id)
+                            lines.append(f"  {idx}. {model_name}")
+                        if len(provider_models) > 5:
+                            lines.append(f"  ... and {len(provider_models) - 5} more")
+
+                    lines.append(
+                        f"\n💡 Total: {len(models)} models from {len(providers)} providers"
+                    )
+                    lines.append("\nUse /models to see quick selection or tap a model button above")
+
+                    header = app.get_header(session.app_context)
+                    response_text = header + "\n\n" + "\n".join(lines)
+                    footer = app.get_footer(session.app_context)
+                    if footer:
+                        response_text += f"\n\n{footer}"
+                else:
+                    header = app.get_header(session.app_context)
+                    response_text = f"{header}\n\nNo models found or API unavailable.\n\nPopular models:\n• kimi-k2.5\n• gemini-2.5-pro\n• gpt-4o\n• claude-4-sonnet"
+                    footer = app.get_footer(session.app_context)
+                    if footer:
+                        response_text += f"\n\n{footer}"
+
+                response = BotResponse(content=response_text)
+            except Exception as e:
+                logger.error("list_models_error", error=str(e))
+                header = app.get_header(session.app_context)
+                response_text = f"{header}\n\n❌ Failed to fetch models: {str(e)}\n\nPopular models:\n• kimi-k2.5\n• gemini-2.5-pro\n• gpt-4o"
+                footer = app.get_footer(session.app_context)
+                if footer:
+                    response_text += f"\n\n{footer}"
+                response = BotResponse(content=response_text)
+        else:
+            header = app.get_header(session.app_context)
+            response_text = f"{header}\n\n🤖 Available Models:\n\n• kimi-k2.5 (default)\n• gemini-2.5-pro\n• gpt-4o\n• claude-4-sonnet\n\n💡 This app doesn't support dynamic model listing"
+            footer = app.get_footer(session.app_context)
+            if footer:
+                response_text += f"\n\n{footer}"
+            response = BotResponse(content=response_text)
+
         await self._send_response(platform, user_id, response)
 
     async def _handle_list_agents(self, message: UserMessage, session: UserSession, app) -> None:
