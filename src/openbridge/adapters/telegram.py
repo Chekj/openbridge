@@ -4,8 +4,15 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from telegram import Update, BotCommand
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters,
+    ContextTypes,
+)
 
 from openbridge.adapters.base import BaseAdapter, UserMessage, BotResponse, MessageType
 from openbridge.adapters.registry import register_adapter
@@ -46,6 +53,8 @@ class TelegramAdapter(BaseAdapter):
             self.application.add_handler(
                 MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_text)
             )
+            # Add callback query handler for inline keyboards
+            self.application.add_handler(CallbackQueryHandler(self._handle_callback_query))
 
             # Set up command menu
             await self._setup_commands()
@@ -322,13 +331,26 @@ Send any command to execute it in your terminal.""".format(user.first_name)
     async def _cmd_opencode_sessions(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
-        """Handle /sessions command - List OpenCode sessions."""
+        """Handle /sessions command - Show inline keyboard with sessions."""
         user = update.effective_user
 
         if self.allowed_users and user.id not in self.allowed_users:
             await update.message.reply_text("You are not authorized.")
             return
 
+        # Fetch sessions from OpenBridge API (we'll need to get them from the app)
+        # For now, show a message explaining how to use it
+        keyboard = [
+            [InlineKeyboardButton("🆕 Create New Session", callback_data="session:new")],
+            [InlineKeyboardButton("📋 List All Sessions", callback_data="session:list")],
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "📁 Session Manager\n\nChoose an action:", reply_markup=reply_markup
+        )
+
+        # Also send the command to router for actual processing
         message = UserMessage(
             message_id=str(update.message.message_id),
             user_id=str(user.id),
@@ -348,28 +370,39 @@ Send any command to execute it in your terminal.""".format(user.first_name)
     async def _cmd_opencode_models(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
-        """Handle /models command - List available models."""
+        """Handle /models command - Show inline keyboard with models."""
         user = update.effective_user
 
         if self.allowed_users and user.id not in self.allowed_users:
             await update.message.reply_text("You are not authorized.")
             return
 
-        message = UserMessage(
-            message_id=str(update.message.message_id),
-            user_id=str(user.id),
-            platform="telegram",
-            content="/models",
-            message_type=MessageType.COMMAND,
-            metadata={
-                "chat_id": update.message.chat_id,
-                "username": user.username,
-                "first_name": user.first_name,
-            },
-        )
+        # Show inline keyboard with popular models
+        # We'll fetch real models from the API when the user taps
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "🤖 Kimi K2.5 (Default)", callback_data="model:opencode-go:kimi-k2.5"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🧠 Gemini 2.5 Pro", callback_data="model:google:gemini-2.5-pro"
+                )
+            ],
+            [InlineKeyboardButton("🎯 GPT-4o", callback_data="model:openai:gpt-4o")],
+            [
+                InlineKeyboardButton(
+                    "🔮 Claude 4 Sonnet", callback_data="model:anthropic:claude-4-sonnet"
+                )
+            ],
+            [InlineKeyboardButton("📋 Show All Models", callback_data="model:list")],
+        ]
 
-        if self._message_handler:
-            await self._message_handler(message)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "🤖 Select a Model\n\nTap a model to switch:", reply_markup=reply_markup
+        )
 
     async def _cmd_opencode_agent(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /agent command - List available agents."""
@@ -405,6 +438,124 @@ Send any command to execute it in your terminal.""".format(user.first_name)
         message = self._parse_message({"update": update})
         if message and self._message_handler:
             await self._message_handler(message)
+
+    async def _handle_callback_query(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Handle inline keyboard button callbacks."""
+        query = update.callback_query
+        await query.answer()  # Acknowledge the callback
+
+        callback_data = query.data
+        user = query.from_user
+
+        if self.allowed_users and user.id not in self.allowed_users:
+            await query.edit_message_text("You are not authorized.")
+            return
+
+        # Parse callback data
+        if callback_data.startswith("model:"):
+            parts = callback_data.split(":")
+            if len(parts) >= 2:
+                action = parts[1]
+                if action == "list":
+                    # Send /models command to get full list
+                    message = UserMessage(
+                        message_id=str(query.message.message_id),
+                        user_id=str(user.id),
+                        platform="telegram",
+                        content="/models",
+                        message_type=MessageType.COMMAND,
+                        metadata={
+                            "chat_id": query.message.chat_id,
+                            "username": user.username,
+                            "first_name": user.first_name,
+                        },
+                    )
+                    if self._message_handler:
+                        await self._message_handler(message)
+                        await query.edit_message_text("📋 Loading models list...")
+                else:
+                    # Switch to specific model
+                    provider_id = parts[1]
+                    model_id = parts[2] if len(parts) > 2 else "default"
+
+                    # Create message with model switch command
+                    message = UserMessage(
+                        message_id=str(query.message.message_id),
+                        user_id=str(user.id),
+                        platform="telegram",
+                        content=f"/model {provider_id}:{model_id}",
+                        message_type=MessageType.COMMAND,
+                        metadata={
+                            "chat_id": query.message.chat_id,
+                            "username": user.username,
+                            "first_name": user.first_name,
+                            "model_provider": provider_id,
+                            "model_id": model_id,
+                        },
+                    )
+                    if self._message_handler:
+                        await self._message_handler(message)
+                        await query.edit_message_text(f"🤖 Switched to {model_id}")
+
+        elif callback_data.startswith("session:"):
+            parts = callback_data.split(":")
+            if len(parts) >= 2:
+                action = parts[1]
+                if action == "new":
+                    # Create new session
+                    message = UserMessage(
+                        message_id=str(query.message.message_id),
+                        user_id=str(user.id),
+                        platform="telegram",
+                        content="/new",
+                        message_type=MessageType.COMMAND,
+                        metadata={
+                            "chat_id": query.message.chat_id,
+                            "username": user.username,
+                            "first_name": user.first_name,
+                        },
+                    )
+                    if self._message_handler:
+                        await self._message_handler(message)
+                        await query.edit_message_text("🆕 Creating new session...")
+                elif action == "list":
+                    # List all sessions
+                    message = UserMessage(
+                        message_id=str(query.message.message_id),
+                        user_id=str(user.id),
+                        platform="telegram",
+                        content="/sessions",
+                        message_type=MessageType.COMMAND,
+                        metadata={
+                            "chat_id": query.message.chat_id,
+                            "username": user.username,
+                            "first_name": user.first_name,
+                        },
+                    )
+                    if self._message_handler:
+                        await self._message_handler(message)
+                        await query.edit_message_text("📁 Loading sessions...")
+                elif action == "switch" and len(parts) > 2:
+                    # Switch to specific session
+                    session_id = parts[2]
+                    message = UserMessage(
+                        message_id=str(query.message.message_id),
+                        user_id=str(user.id),
+                        platform="telegram",
+                        content=f"/session {session_id}",
+                        message_type=MessageType.COMMAND,
+                        metadata={
+                            "chat_id": query.message.chat_id,
+                            "username": user.username,
+                            "first_name": user.first_name,
+                            "target_session_id": session_id,
+                        },
+                    )
+                    if self._message_handler:
+                        await self._message_handler(message)
+                        await query.edit_message_text(f"🔄 Switching to session...")
 
     def get_user_info(self, user_id: str) -> dict[str, Any]:
         return {"user_id": user_id, "platform": "telegram"}

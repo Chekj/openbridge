@@ -107,6 +107,102 @@ class OpenCodeServeApp(App):
             logger.error("opencode_list_sessions_error", error=str(e))
         return []
 
+    async def list_models(self) -> list:
+        """List available models from OpenCode API."""
+        await self.ensure_server_running()
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, lambda: self._request("GET", "/provider"))
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    # Extract models from providers
+                    models = []
+                    providers = data.get("all", [])
+                    for provider in providers:
+                        provider_id = provider.get("id", "unknown")
+                        provider_models = provider.get("models", [])
+                        for model in provider_models:
+                            models.append(
+                                {
+                                    "provider_id": provider_id,
+                                    "model_id": model.get("id", "unknown"),
+                                    "name": model.get("name", "Unknown"),
+                                    "provider_name": provider.get("name", provider_id),
+                                }
+                            )
+                    logger.info("opencode_list_models", count=len(models))
+                    return models
+                except Exception as e:
+                    logger.error("opencode_list_models_parse_error", error=str(e))
+                    return []
+            else:
+                logger.error("opencode_list_models_failed", status=response.status_code)
+        except Exception as e:
+            logger.error("opencode_list_models_error", error=str(e))
+        return []
+
+    async def send_message_with_model(
+        self, message: str, context: Dict[str, Any], model_provider: str, model_id: str
+    ) -> Dict[str, Any]:
+        """Send message with specific model."""
+        await self.ensure_server_running()
+
+        session_id = context.get("session_id")
+
+        # Create session if needed
+        if not session_id:
+            logger.info("creating_new_opencode_session")
+            session = await self.create_session(title="OpenBridge Session")
+            session_id = session.get("id")
+            context["session_id"] = session_id
+            logger.info("opencode_session_created", session_id=session_id)
+
+        # Store current model in context
+        context["current_model_provider"] = model_provider
+        context["current_model_id"] = model_id
+
+        # Send message with specific model
+        logger.info(
+            "sending_opencode_message_with_model",
+            session_id=session_id,
+            model=f"{model_provider}/{model_id}",
+        )
+        body = {
+            "parts": [{"type": "text", "text": message}],
+            "model": {"providerID": model_provider, "modelID": model_id},
+        }
+
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None, lambda: self._request("POST", f"/session/{session_id}/message", json=body)
+        )
+
+        # Check status and handle errors
+        if response.status_code != 200:
+            error_text = response.text[:500] if response.text else "<empty>"
+            logger.error("opencode_api_error", status=response.status_code, body=error_text)
+            return {"error": f"API Error {response.status_code}: {error_text}"}
+
+        # Safely parse JSON
+        response_text = response.text
+        logger.info(
+            "opencode_response_received",
+            status=response.status_code,
+            text_length=len(response_text),
+            text_preview=response_text[:100],
+        )
+
+        if not response_text:
+            logger.error("opencode_empty_response", status=response.status_code)
+            return {"error": "Empty response from server"}
+
+        try:
+            return response.json()
+        except Exception as e:
+            logger.error("opencode_json_parse_error", error=str(e), text=response_text[:500])
+            return {"error": f"Invalid JSON response: {str(e)}"}
+
     async def create_session(self, title: Optional[str] = None) -> Dict[str, Any]:
         """Create a new OpenCode session."""
         await self.ensure_server_running()

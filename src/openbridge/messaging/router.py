@@ -173,6 +173,22 @@ class MessageRouter:
             await self._handle_list_agents(message, session, app)
             return
 
+        # Handle /model <provider>:<model> - Switch model
+        if content.startswith("/model "):
+            parts = content.split(" ", 1)
+            if len(parts) == 2:
+                await self._handle_switch_model(message, session, app, parts[1])
+            else:
+                await self._handle_list_models(message, session, app)
+            return
+
+        # Handle /session <session_id> - Switch session
+        if content.startswith("/session "):
+            parts = content.split(" ", 1)
+            if len(parts) == 2:
+                await self._handle_switch_session(message, session, app, parts[1])
+            return
+
         # Format command for app
         command = app.format_command(content, session.app_context)
 
@@ -384,6 +400,56 @@ class MessageRouter:
 
         header = app.get_header(session.app_context)
         response_text = f"{header}\n\n🕵️ Available Agents:\n\n• build - Code builder and editor\n• ask - Question answering\n• test - Testing and debugging\n\n💡 Agent switching coming soon!"
+        footer = app.get_footer(session.app_context)
+        if footer:
+            response_text += f"\n\n{footer}"
+
+        response = BotResponse(content=response_text)
+        await self._send_response(platform, user_id, response)
+
+    async def _handle_switch_model(
+        self, message: UserMessage, session: UserSession, app, model_spec: str
+    ) -> None:
+        """Handle /model <provider>:<model> command - Switch to specific model."""
+        platform = message.platform
+        user_id = message.user_id
+
+        # Parse model specification
+        if ":" in model_spec:
+            parts = model_spec.split(":")
+            provider_id = parts[0]
+            model_id = parts[1]
+        else:
+            # Default provider
+            provider_id = "opencode-go"
+            model_id = model_spec
+
+        # Store in context
+        session.app_context["current_model_provider"] = provider_id
+        session.app_context["current_model_id"] = model_id
+
+        header = app.get_header(session.app_context)
+        response_text = f"{header}\n\n🤖 Model switched to: {model_id}\nProvider: {provider_id}\n\nYour next message will use this model."
+        footer = app.get_footer(session.app_context)
+        if footer:
+            response_text += f"\n\n{footer}"
+
+        response = BotResponse(content=response_text)
+        await self._send_response(platform, user_id, response)
+
+    async def _handle_switch_session(
+        self, message: UserMessage, session: UserSession, app, session_id: str
+    ) -> None:
+        """Handle /session <session_id> command - Switch to specific session."""
+        platform = message.platform
+        user_id = message.user_id
+
+        # Update context with new session
+        old_session_id = session.app_context.get("session_id", "none")
+        session.app_context["session_id"] = session_id
+
+        header = app.get_header(session.app_context)
+        response_text = f"{header}\n\n📁 Switched to session: {session_id[:12]}...\n\nPrevious: {old_session_id[:12] if len(old_session_id) > 12 else old_session_id}..."
         footer = app.get_footer(session.app_context)
         if footer:
             response_text += f"\n\n{footer}"
