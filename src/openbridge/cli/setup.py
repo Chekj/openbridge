@@ -404,8 +404,9 @@ WantedBy=multi-user.target
 """
 
         try:
-            # Write service file
-            temp_file = Path("/tmp/openbridge.service")
+            # Write service file to a location we can access
+            # Use config directory which we know we can write to
+            temp_file = self.config_path.parent / "openbridge.service.tmp"
             temp_file.write_text(service_content)
 
             # Install service
