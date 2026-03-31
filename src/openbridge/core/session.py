@@ -81,10 +81,15 @@ class SessionManager:
         logger.info("session_manager_stopped")
 
     async def create_session(
-        self, user_id: str, platform: str, metadata: Optional[dict] = None
+        self,
+        user_id: str,
+        platform: str,
+        metadata: Optional[dict] = None,
+        session_id: Optional[str] = None,
     ) -> UserSession:
         async with self._lock:
-            session_id = str(uuid.uuid4())
+            if session_id is None:
+                session_id = str(uuid.uuid4())
             session = UserSession(
                 session_id=session_id, user_id=user_id, platform=platform, metadata=metadata or {}
             )

@@ -41,7 +41,10 @@ class MessageRouter:
         session = self.session_manager.get_session(session_id)
         if not session:
             session = await self.session_manager.create_session(
-                user_id=user_id, platform=platform, metadata={"session_id": session_id}
+                user_id=user_id,
+                platform=platform,
+                metadata={"session_id": session_id},
+                session_id=session_id,
             )
 
         content = message.content.strip()
