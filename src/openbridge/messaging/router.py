@@ -36,7 +36,7 @@ class MessageRouter:
 
         if not session:
             session = await self.session_manager.create_session(
-                session_id=session_id, user_id=user_id, platform=platform
+                user_id=user_id, platform=platform, metadata={"session_id": session_id}
             )
 
         # Handle command

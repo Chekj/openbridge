@@ -7,6 +7,8 @@ from typing import Optional
 
 import structlog
 
+# Import adapters to register them
+from openbridge.adapters import telegram, discord
 from openbridge.adapters.registry import create_adapter
 from openbridge.config import Config
 from openbridge.core.engine import BridgeEngine

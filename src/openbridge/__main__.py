@@ -45,12 +45,24 @@ def setup(ctx, auto_start):
 @click.pass_context
 def start(ctx, host, port, daemon):
     """Start the OpenBridge server."""
+    import os
+
     config_path = ctx.obj.get("config_path")
 
     # Load configuration
     if config_path:
+        # Config path provided via CLI
         config = Config.from_file(config_path)
+    elif os.environ.get("OB_CONFIG"):
+        # Config path provided via environment variable
+        env_path = Path(os.environ["OB_CONFIG"]).expanduser()
+        if env_path.exists():
+            config = Config.from_file(env_path)
+        else:
+            console.print(f"[red]Config file not found: {env_path}[/red]")
+            sys.exit(1)
     else:
+        # Check default location
         default_path = Path.home() / ".openbridge" / "config.yaml"
         if default_path.exists():
             config = Config.from_file(default_path)
