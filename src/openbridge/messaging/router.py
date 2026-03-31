@@ -66,6 +66,40 @@ class MessageRouter:
                 await self._close_app(message, session)
                 return
 
+            # Check for model and session commands (work in any mode)
+            if content.startswith("/model "):
+                app = self.app_registry.get(session.current_app)
+                if app and hasattr(app, "send_message"):
+                    parts = content.split(" ", 1)
+                    if len(parts) == 2:
+                        await self._handle_switch_model(message, session, app, parts[1])
+                    else:
+                        await self._handle_list_models(message, session, app)
+                else:
+                    await self._send_response(
+                        message.platform,
+                        message.user_id,
+                        BotResponse(
+                            content="❌ Model switching requires OpenCode app. Use /app opencode first."
+                        ),
+                    )
+                return
+            elif content.startswith("/session "):
+                app = self.app_registry.get(session.current_app)
+                if app and hasattr(app, "send_message"):
+                    parts = content.split(" ", 1)
+                    if len(parts) == 2:
+                        await self._handle_switch_session(message, session, app, parts[1])
+                else:
+                    await self._send_response(
+                        message.platform,
+                        message.user_id,
+                        BotResponse(
+                            content="❌ Session switching requires OpenCode app. Use /app opencode first."
+                        ),
+                    )
+                return
+
             # Check if we're in app mode
             if session.current_app != "terminal":
                 await self._handle_app_command(message, session)
