@@ -19,6 +19,8 @@ echo ""
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Helper functions
@@ -34,9 +36,26 @@ print_info() {
     echo -e "${YELLOW}[INFO]${NC} $1"
 }
 
+print_step() {
+    echo -e "${CYAN}[STEP]${NC} $1"
+}
+
+print_header() {
+    echo -e "${BLUE}$1${NC}"
+}
+
+# Check if running as root
+check_not_root() {
+    if [ "$EUID" -eq 0 ]; then
+        print_error "Do not run this script as root!"
+        echo "OpenBridge will ask for sudo only when needed for systemd installation."
+        exit 1
+    fi
+}
+
 # Check Python version
 check_python() {
-    print_info "Checking Python version..."
+    print_step "Checking Python version..."
     
     if command -v python3 &> /dev/null; then
         PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
@@ -56,7 +75,7 @@ check_python() {
 
 # Check pip
 check_pip() {
-    print_info "Checking pip..."
+    print_step "Checking pip..."
     
     if command -v pip3 &> /dev/null; then
         print_success "pip3 found"
@@ -67,80 +86,81 @@ check_pip() {
     exit 1
 }
 
+# Check git
+check_git() {
+    print_step "Checking git..."
+    
+    if ! command -v git &> /dev/null; then
+        print_error "git is required but not installed"
+        echo "Please install git: sudo apt-get install git"
+        exit 1
+    fi
+    print_success "git found"
+}
+
 # Create directories
 setup_directories() {
-    print_info "Creating directories..."
+    print_step "Creating directories..."
     mkdir -p "$INSTALL_DIR"
     mkdir -p "$BIN_DIR"
     mkdir -p "$HOME/.openbridge"
     mkdir -p "$HOME/.openbridge/logs"
+    mkdir -p "$HOME/.openbridge/sessions"
     print_success "Directories created"
 }
 
-# Install OpenBridge
-install_openbridge() {
-    print_info "Installing OpenBridge..."
+# Download OpenBridge
+download_openbridge() {
+    print_step "Downloading OpenBridge..."
     
-    # Check if running from local directory
-    if [ -f "pyproject.toml" ] && grep -q "openbridge" pyproject.toml 2>/dev/null; then
-        print_info "Installing from local directory..."
-        cp -r . "$INSTALL_DIR"
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        print_info "Updating existing installation..."
+        cd "$INSTALL_DIR"
+        git pull
     else
-        print_info "Downloading from GitHub..."
-        if command -v git &> /dev/null; then
-            if [ -d "$INSTALL_DIR/.git" ]; then
-                cd "$INSTALL_DIR"
-                git pull
-            else
-                rm -rf "$INSTALL_DIR"
-                git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
-            fi
-        else
-            print_info "Downloading release archive..."
-            curl -L "$REPO_URL/releases/latest/download/openbridge.tar.gz" | tar -xz -C "$INSTALL_DIR" --strip-components=1
-        fi
+        print_info "Cloning repository..."
+        rm -rf "$INSTALL_DIR"
+        git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
     fi
     
-    print_success "Source code ready"
+    print_success "OpenBridge downloaded"
 }
 
 # Setup virtual environment
 setup_venv() {
-    print_info "Setting up virtual environment..."
+    print_step "Setting up virtual environment..."
     
     if [ ! -d "$VENV_DIR" ]; then
         python3 -m venv "$VENV_DIR"
     fi
     
     source "$VENV_DIR/bin/activate"
-    pip install --upgrade pip
-    pip install -e "$INSTALL_DIR"
+    pip install --upgrade pip --quiet
+    pip install -e "$INSTALL_DIR" --quiet
     
-    print_success "Virtual environment created"
+    print_success "Virtual environment ready"
 }
 
 # Create wrapper script
 create_wrapper() {
-    print_info "Creating command wrapper..."
+    print_step "Creating command shortcuts..."
     
-    cat > "$BIN_DIR/openbridge" << 'EOF'
+    cat > "$BIN_DIR/openbridge" << EOF
 #!/bin/bash
-VENV_DIR="$HOME/.local/share/openbridge/venv"
 source "$VENV_DIR/bin/activate"
-exec openbridge "$@"
+exec openbridge "\$@"
 EOF
-    
     chmod +x "$BIN_DIR/openbridge"
     
-    # Also create 'ob' alias
+    # Create 'ob' alias
     ln -sf "$BIN_DIR/openbridge" "$BIN_DIR/ob"
     
-    print_success "Command wrapper created"
+    print_success "Commands created: openbridge, ob"
 }
 
-# Setup shell integration
-setup_shell() {
-    print_info "Configuring shell..."
+# Setup shell PATH
+setup_shell_path() {
+    print_step "Configuring shell..."
     
     SHELL_NAME=$(basename "$SHELL")
     
@@ -165,70 +185,113 @@ setup_shell() {
             echo "" >> "$RC_FILE"
             echo "# OpenBridge" >> "$RC_FILE"
             echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC_FILE"
-            print_success "Added to PATH in $RC_FILE"
         fi
     else
         echo 'export PATH="$HOME/.local/bin:$PATH"' > "$RC_FILE"
-        print_success "Created $RC_FILE with PATH"
     fi
+    
+    # Export for current session
+    export PATH="$BIN_DIR:$PATH"
+    
+    print_success "Shell configured"
 }
 
-# Run setup wizard
+# Run interactive setup
 run_setup() {
-    print_info "Running setup wizard..."
+    print_header ""
+    print_header "=========================================="
+    print_header "  INTERACTIVE SETUP WIZARD"
+    print_header "=========================================="
+    echo ""
     
-    if [ -t 0 ]; then
-        # Interactive terminal
-        "$BIN_DIR/openbridge" setup
+    # Source venv and run setup
+    source "$VENV_DIR/bin/activate"
+    "$BIN_DIR/openbridge" setup --auto-start
+}
+
+# Install systemd service
+install_systemd() {
+    print_step "Installing systemd service..."
+    
+    if ! command -v systemctl &> /dev/null; then
+        print_info "systemd not found, skipping service installation"
+        return 1
+    fi
+    
+    # Create service file
+    SERVICE_FILE="/tmp/openbridge.service"
+    cat > "$SERVICE_FILE" << EOF
+[Unit]
+Description=OpenBridge - Remote CLI Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+Group=$(id -gn)
+WorkingDirectory=$HOME
+Environment=PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+Environment=OB_CONFIG=$HOME/.openbridge/config.yaml
+ExecStart=$VENV_DIR/bin/openbridge start
+ExecReload=/bin/kill -HUP \$MAINPID
+Restart=on-failure
+RestartSec=5s
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    # Install service (requires sudo)
+    if sudo cp "$SERVICE_FILE" /etc/systemd/system/openbridge.service 2>/dev/null; then
+        sudo systemctl daemon-reload
+        sudo systemctl enable openbridge.service
+        print_success "Systemd service installed"
+        return 0
     else
-        print_info "Non-interactive mode detected"
-        print_info "Please run 'openbridge setup' manually to configure"
+        print_info "Could not install systemd service (sudo required)"
+        return 1
     fi
 }
 
 # Main installation
 main() {
-    print_info "Starting installation..."
+    print_header "Starting OpenBridge installation..."
     
+    check_not_root
     check_python
     check_pip
+    check_git
     setup_directories
-    install_openbridge
+    download_openbridge
     setup_venv
     create_wrapper
-    setup_shell
+    setup_shell_path
     
     echo ""
-    echo "=========================================="
-    print_success "Installation Complete!"
-    echo "=========================================="
-    echo ""
-    echo "OpenBridge is installed in: $INSTALL_DIR"
-    echo ""
-    echo "Next steps:"
-    echo "  1. Restart your terminal or run:"
-    echo "     source ~/.bashrc  # or ~/.zshrc"
-    echo ""
-    echo "  2. Run setup wizard:"
-    echo "     openbridge setup"
-    echo ""
-    echo "  3. Start the server:"
-    echo "     openbridge start"
-    echo ""
-    echo "  4. Install as service (optional):"
-    echo "     sudo cp $INSTALL_DIR/scripts/systemd/openbridge.service /etc/systemd/system/"
-    echo ""
-    echo "Documentation: https://docs.openbridge.dev"
+    print_success "Installation complete!"
     echo ""
     
-    # Offer to run setup now if interactive
-    if [ -t 0 ]; then
-        read -p "Would you like to run the setup wizard now? (y/N) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            run_setup
-        fi
-    fi
+    # Run interactive setup
+    run_setup
+    
+    echo ""
+    print_header "=========================================="
+    print_success "OpenBridge is installed and configured!"
+    print_header "=========================================="
+    echo ""
+    echo "Commands available:"
+    echo "  openbridge --help    Show all commands"
+    echo "  openbridge status    Check server status"
+    echo "  openbridge stop      Stop the server"
+    echo ""
+    echo "Configuration: ~/.openbridge/config.yaml"
+    echo "Logs: ~/.openbridge/logs/"
+    echo ""
+    echo "To uninstall: rm -rf ~/.local/share/openbridge ~/.openbridge"
+    echo ""
 }
 
+# Run main function
 main

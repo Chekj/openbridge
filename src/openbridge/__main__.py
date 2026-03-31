@@ -11,7 +11,6 @@ import click
 import structlog
 from rich.console import Console
 
-from openbridge.cli.setup import SetupWizard
 from openbridge.config import Config
 from openbridge.server import BridgeServer
 
@@ -30,11 +29,13 @@ def cli(ctx, config, verbose):
 
 
 @cli.command()
+@click.option("--auto-start", "-a", is_flag=True, help="Auto-start after setup (used by installer)")
 @click.pass_context
-def setup(ctx):
+def setup(ctx, auto_start):
     """Run interactive setup wizard."""
-    wizard = SetupWizard()
-    wizard.run()
+    from openbridge.cli.setup import run_setup
+
+    run_setup(auto_start=auto_start)
 
 
 @cli.command()

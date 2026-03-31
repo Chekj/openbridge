@@ -1,5 +1,5 @@
 """CLI components."""
 
-from openbridge.cli.setup import SetupWizard
+from openbridge.cli.setup import SetupWizard, run_setup
 
-__all__ = ["SetupWizard"]
+__all__ = ["SetupWizard", "run_setup"]
