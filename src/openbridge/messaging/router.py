@@ -143,7 +143,6 @@ class MessageRouter:
         """Handle command when in app mode."""
         app = self.app_registry.get(session.current_app)
         if not app:
-            # App not found, reset to terminal
             session.current_app = "terminal"
             return
 
@@ -193,16 +192,36 @@ class MessageRouter:
             # Execute command
             pty_session = await self.engine.execute_command(session_id, command)
 
-            # Wait for output (opencode needs 8-10 seconds)
-            await asyncio.sleep(8)
+            # Poll for output with dynamic waiting
+            output = ""
+            max_wait_time = 120  # Maximum 2 minutes for long tasks
+            poll_interval = 0.5
+            total_waited = 0
+            no_output_count = 0
 
-            # Get output
-            output = await self.engine.get_output(session_id, clear=True)
+            while total_waited < max_wait_time:
+                await asyncio.sleep(poll_interval)
+                total_waited += poll_interval
 
-            if not output:
-                # Try waiting a bit more
-                await asyncio.sleep(3)
-                output = await self.engine.get_output(session_id, clear=True)
+                # Check for new output
+                new_output = await self.engine.get_output(session_id, clear=True)
+                if new_output:
+                    output += new_output
+                    no_output_count = 0
+
+                    # Check if we have a complete response (for opencode JSON)
+                    if app.slug == "opencode" and self._has_complete_response(output):
+                        break
+                else:
+                    no_output_count += 1
+
+                    # If no output for 3 seconds and we have some output, we're done
+                    if no_output_count >= 6 and output:
+                        break
+
+                    # If no output for 10 seconds total, timeout
+                    if no_output_count >= 20:
+                        break
 
             if output:
                 # Parse through app
@@ -235,6 +254,11 @@ class MessageRouter:
             error_msg = f"{header}\n\n❌ Error: {str(e)}"
             await self._send_response(platform, user_id, BotResponse(content=error_msg))
 
+    def _has_complete_response(self, output: str) -> bool:
+        """Check if OpenCode output has a complete response."""
+        # Look for step_finish in the output
+        return '"type":"step_finish"' in output or '"type": "step_finish"' in output
+
     async def _handle_terminal_command(self, message: UserMessage, session: UserSession) -> None:
         """Handle terminal-specific commands."""
         content = message.content.strip()
@@ -247,12 +271,12 @@ class MessageRouter:
                 content="""💻 Terminal Commands:
 
 /help - Show this help
-/cancel - Send Ctrl+C to terminal
-/resize <rows> <cols> - Resize terminal
-/status - Show session status
 /app - Show app menu
 /app <name> - Switch to app (opencode, terminal)
 /close - Exit current app
+/cancel - Send Ctrl+C to terminal
+/resize <rows> <cols> - Resize terminal
+/status - Show session status
 
 Or type any shell command to execute it."""
             )
