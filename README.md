@@ -22,11 +22,22 @@ Connect to your computer's terminal from anywhere using Telegram, Discord, Whats
 
 ## Quick Start
 
-### One-Line Installation
+### One-Command Installation 🚀
+
+One command downloads, installs, configures, and starts OpenBridge:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Chekj/openbridge/main/scripts/install.sh | bash
 ```
+
+**That's it!** The installer will:
+1. ✓ Download and install OpenBridge
+2. ✓ Launch interactive setup wizard
+3. ✓ Configure your chosen platforms (Telegram, Discord, WhatsApp)
+4. ✓ Install as systemd service (auto-starts on boot)
+5. ✓ Start the server immediately
+
+You'll just need to answer a few prompts to configure your bots.
 
 ### Manual Installation
 
