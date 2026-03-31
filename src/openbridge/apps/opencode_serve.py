@@ -252,7 +252,21 @@ class OpenCodeServeApp(App):
 
         # Send message
         logger.info("sending_opencode_message", session_id=session_id)
-        body = {"parts": [{"type": "text", "text": message}]}
+
+        # Check if specific model is set in context
+        model_provider = context.get("current_model_provider")
+        model_id = context.get("current_model_id")
+
+        if model_provider and model_id:
+            # Use specific model
+            logger.info("using_specific_model", provider=model_provider, model=model_id)
+            body = {
+                "parts": [{"type": "text", "text": message}],
+                "model": {"providerID": model_provider, "modelID": model_id},
+            }
+        else:
+            # No model specified, use default
+            body = {"parts": [{"type": "text", "text": message}]}
 
         loop = asyncio.get_event_loop()
         logger.info(
