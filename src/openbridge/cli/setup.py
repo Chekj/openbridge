@@ -24,11 +24,16 @@ class SetupWizard:
 
     def __init__(self):
         self.config = Config()
-        # Use environment variable or default to home directory
-        config_dir = Path(os.getenv("OB_CONFIG", Path.home() / ".openbridge")).parent
-        self.config_path = config_dir / "config.yaml"
-        self.auto_start = False
+        # Determine config path based on whether running as root
         self.is_root = os.geteuid() == 0
+        if self.is_root:
+            # System-wide installation uses /etc/openbridge
+            self.config_path = Path("/etc/openbridge/config.yaml")
+        else:
+            # User installation uses ~/.openbridge
+            config_dir = Path(os.getenv("OB_CONFIG", Path.home() / ".openbridge")).parent
+            self.config_path = config_dir / "config.yaml"
+        self.auto_start = False
 
     def run(self, auto_start: bool = False) -> Config:
         """Run the complete setup wizard."""
