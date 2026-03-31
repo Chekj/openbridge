@@ -16,6 +16,7 @@ class OpenCodeApp(App):
     def __init__(self, manifest: AppManifest):
         super().__init__(manifest)
         self.base_url = "http://localhost:4096"
+        self.password = "openbridge123"  # Password for Basic Auth
         self.api_client: Optional[httpx.AsyncClient] = None
         self.server_process = None
 
@@ -27,7 +28,9 @@ class OpenCodeApp(App):
         # Check if server is already running
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{self.base_url}/health", timeout=2.0)
+                response = await client.get(
+                    f"{self.base_url}/health", auth=("opencode", self.password), timeout=2.0
+                )
                 if response.status_code == 200:
                     logger.info("opencode_server_already_running")
                     return
@@ -38,7 +41,7 @@ class OpenCodeApp(App):
         logger.info("starting_opencode_server")
         env = {
             "HOME": "/root",
-            "OPENCODE_SERVER_PASSWORD": "openbridge",
+            "OPENCODE_SERVER_PASSWORD": self.password,
             "PATH": "/root/.opencode/bin:/usr/local/bin:/usr/bin:/bin",
         }
 
@@ -57,7 +60,9 @@ class OpenCodeApp(App):
         for _ in range(10):
             try:
                 async with httpx.AsyncClient() as client:
-                    response = await client.get(f"{self.base_url}/health", timeout=2.0)
+                    response = await client.get(
+                        f"{self.base_url}/health", auth=("opencode", self.password), timeout=2.0
+                    )
                     if response.status_code == 200:
                         logger.info("opencode_server_started")
                         return
@@ -85,7 +90,7 @@ class OpenCodeApp(App):
                 response = await client.post(
                     f"{self.base_url}/v1/sessions",
                     json={"message": message},
-                    headers={"Authorization": "Bearer openbridge"},
+                    auth=("opencode", self.password),
                     timeout=60.0,
                 )
             else:
@@ -93,7 +98,7 @@ class OpenCodeApp(App):
                 response = await client.post(
                     f"{self.base_url}/v1/sessions/{session_id}/messages",
                     json={"message": message},
-                    headers={"Authorization": "Bearer openbridge"},
+                    auth=("opencode", self.password),
                     timeout=60.0,
                 )
 
@@ -107,7 +112,7 @@ class OpenCodeApp(App):
                 logger.error("opencode_api_error", status=response.status_code, body=response.text)
                 return {"error": f"API Error: {response.status_code}"}
 
-    def parse_output(self, output: Dict[str, Any], context: Dict[str, Any]) -> str:
+    def parse_output(self, output: Any, context: Dict[str, Any]) -> str:
         """Parse OpenCode HTTP API response."""
         if "error" in output:
             return f"❌ Error: {output['error']}"
