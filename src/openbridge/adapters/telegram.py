@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from telegram import Update, Bot
+from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 from openbridge.adapters.base import BaseAdapter, UserMessage, BotResponse, MessageType
@@ -33,9 +33,15 @@ class TelegramAdapter(BaseAdapter):
             # Add handlers
             self.application.add_handler(CommandHandler("start", self._cmd_start))
             self.application.add_handler(CommandHandler("help", self._cmd_help))
+            self.application.add_handler(CommandHandler("cancel", self._cmd_cancel))
+            self.application.add_handler(CommandHandler("status", self._cmd_status))
+            self.application.add_handler(CommandHandler("resize", self._cmd_resize))
             self.application.add_handler(
                 MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_text)
             )
+
+            # Set up command menu
+            await self._setup_commands()
 
             await self.application.initialize()
             await self.application.start()
@@ -49,6 +55,17 @@ class TelegramAdapter(BaseAdapter):
         except Exception as e:
             logger.error("telegram_connect_error", error=str(e))
             return False
+
+    async def _setup_commands(self) -> None:
+        """Set up the command menu in Telegram."""
+        commands = [
+            BotCommand("start", "Start the bot and show welcome message"),
+            BotCommand("help", "Show help and available commands"),
+            BotCommand("cancel", "Cancel current operation (Ctrl+C)"),
+            BotCommand("status", "Check bot and session status"),
+            BotCommand("resize", "Resize terminal (usage: /resize rows cols)"),
+        ]
+        await self.application.bot.set_my_commands(commands)
 
     async def disconnect(self) -> None:
         if self.application:
@@ -122,6 +139,7 @@ Special commands:
 /help - Show this help
 /cancel - Cancel current operation
 /resize <rows> <cols> - Resize terminal
+/status - Check session status
 
 Tips:
 - Commands are executed in real shell sessions
@@ -129,6 +147,89 @@ Tips:
 - Use Ctrl+C equivalent with /cancel"""
 
         await update.message.reply_text(help_text)
+
+    async def _cmd_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /cancel command - sends Ctrl+C to terminal."""
+        user = update.effective_user
+
+        if self.allowed_users and user.id not in self.allowed_users:
+            await update.message.reply_text("You are not authorized.")
+            return
+
+        # Send Ctrl+C signal through the message handler
+        message = UserMessage(
+            message_id=str(update.message.message_id),
+            user_id=str(user.id),
+            platform="telegram",
+            content="/cancel",
+            message_type=MessageType.COMMAND,
+            metadata={
+                "chat_id": update.message.chat_id,
+                "username": user.username,
+                "first_name": user.first_name,
+            },
+        )
+
+        if self._message_handler:
+            await self._message_handler(message)
+            await update.message.reply_text("Sent Ctrl+C to terminal")
+
+    async def _cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /status command."""
+        user = update.effective_user
+
+        if self.allowed_users and user.id not in self.allowed_users:
+            await update.message.reply_text("You are not authorized.")
+            return
+
+        status_text = """OpenBridge Status
+
+Bot: Online ✅
+Platform: Telegram
+User: {}
+
+Send any command to execute it in your terminal.""".format(user.first_name)
+
+        await update.message.reply_text(status_text)
+
+    async def _cmd_resize(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /resize command."""
+        user = update.effective_user
+
+        if self.allowed_users and user.id not in self.allowed_users:
+            await update.message.reply_text("You are not authorized.")
+            return
+
+        # Parse arguments
+        args = update.message.text.split()
+        if len(args) == 3:
+            try:
+                rows = int(args[1])
+                cols = int(args[2])
+
+                # Send resize command through the message handler
+                message = UserMessage(
+                    message_id=str(update.message.message_id),
+                    user_id=str(user.id),
+                    platform="telegram",
+                    content=f"/resize {rows} {cols}",
+                    message_type=MessageType.COMMAND,
+                    metadata={
+                        "chat_id": update.message.chat_id,
+                        "username": user.username,
+                        "first_name": user.first_name,
+                    },
+                )
+
+                if self._message_handler:
+                    await self._message_handler(message)
+                    await update.message.reply_text(f"Terminal resized to {rows}x{cols}")
+            except ValueError:
+                await update.message.reply_text(
+                    "Usage: /resize <rows> <cols>\nExample: /resize 24 80"
+                )
+        else:
+            await update.message.reply_text("Usage: /resize <rows> <cols>\nExample: /resize 24 80")
 
     async def _handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user = update.effective_user
