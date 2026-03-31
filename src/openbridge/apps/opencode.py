@@ -19,9 +19,9 @@ class OpenCodeApp(App):
         """Convert user input to opencode CLI command."""
         # Handle app-specific commands
         if user_input == "/new":
-            # Create new session
-            context["session_id"] = self._generate_session_id()
-            return f'opencode run --format json "New session started. Hello!"'
+            # Clear session to force new session creation
+            context.pop("session_id", None)
+            return f'opencode run --format json "New session started"'
 
         elif user_input == "/models":
             return "opencode models"
@@ -53,7 +53,8 @@ class OpenCodeApp(App):
         # Normal prompt - use JSON format for structured output
         session_id = context.get("session_id", "")
         if session_id:
-            return f'opencode run --format json --session {session_id} "{user_input}"'
+            # Continue existing session using --continue flag
+            return f'opencode run --format json --continue "{user_input}"'
         else:
             # Create new session implicitly
             return f'opencode run --format json "{user_input}"'
