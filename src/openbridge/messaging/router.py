@@ -153,6 +153,26 @@ class MessageRouter:
             await self._close_app(message, session)
             return
 
+        # Handle /new - Create new session
+        if content == "/new":
+            await self._handle_new_session(message, session, app)
+            return
+
+        # Handle /sessions - List sessions
+        if content == "/sessions":
+            await self._handle_list_sessions(message, session, app)
+            return
+
+        # Handle /models - List models (placeholder for now)
+        if content == "/models":
+            await self._handle_list_models(message, session, app)
+            return
+
+        # Handle /agent - List agents (placeholder for now)
+        if content == "/agent":
+            await self._handle_list_agents(message, session, app)
+            return
+
         # Format command for app
         command = app.format_command(content, session.app_context)
 
@@ -254,6 +274,122 @@ class MessageRouter:
         """Check if OpenCode output has a complete response."""
         # Look for step_finish in the output
         return '"type":"step_finish"' in output or '"type": "step_finish"' in output
+
+    async def _handle_new_session(self, message: UserMessage, session: UserSession, app) -> None:
+        """Handle /new command - Create new OpenCode session."""
+        platform = message.platform
+        user_id = message.user_id
+
+        if hasattr(app, "create_session") and callable(getattr(app, "create_session")):
+            try:
+                # Create new session
+                new_session = await app.create_session(
+                    title=f"Session {len(session.app_context.get('sessions', [])) + 1}"
+                )
+                session_id = new_session.get("id")
+
+                if session_id:
+                    # Update context with new session
+                    session.app_context["session_id"] = session_id
+
+                    header = app.get_header(session.app_context)
+                    response_text = f"{header}\n\n✅ Created new session: {session_id[:12]}...\n\nYou can now start chatting!"
+                    footer = app.get_footer(session.app_context)
+                    if footer:
+                        response_text += f"\n\n{footer}"
+
+                    response = BotResponse(content=response_text)
+                else:
+                    response = BotResponse(
+                        content="❌ Failed to create session: No session ID returned"
+                    )
+            except Exception as e:
+                logger.error("new_session_error", error=str(e))
+                response = BotResponse(content=f"❌ Failed to create session: {str(e)}")
+        else:
+            response = BotResponse(content="❌ This app doesn't support session creation")
+
+        await self._send_response(platform, user_id, response)
+
+    async def _handle_list_sessions(self, message: UserMessage, session: UserSession, app) -> None:
+        """Handle /sessions command - List all OpenCode sessions."""
+        platform = message.platform
+        user_id = message.user_id
+
+        if hasattr(app, "list_sessions") and callable(getattr(app, "list_sessions")):
+            try:
+                sessions = await app.list_sessions()
+
+                if sessions:
+                    lines = ["📋 OpenCode Sessions:"]
+                    current_session_id = session.app_context.get("session_id", "")
+
+                    for idx, s in enumerate(sessions[:10], 1):  # Show max 10 sessions
+                        sid = s.get("id", "unknown")
+                        title = s.get("title", "Untitled")
+
+                        # Mark current session
+                        marker = "👉" if sid == current_session_id else "  "
+                        sid_short = sid[:12] if len(sid) > 12 else sid
+
+                        lines.append(f"{marker} {idx}. {sid_short}... - {title}")
+
+                    if len(sessions) > 10:
+                        lines.append(f"\n... and {len(sessions) - 10} more sessions")
+
+                    lines.append("\n💡 Tip: Use /new to create a new session")
+
+                    header = app.get_header(session.app_context)
+                    response_text = header + "\n\n" + "\n".join(lines)
+                    footer = app.get_footer(session.app_context)
+                    if footer:
+                        response_text += f"\n\n{footer}"
+
+                    response = BotResponse(content=response_text)
+                else:
+                    header = app.get_header(session.app_context)
+                    response_text = (
+                        f"{header}\n\nNo active sessions found.\n\nUse /new to create one!"
+                    )
+                    footer = app.get_footer(session.app_context)
+                    if footer:
+                        response_text += f"\n\n{footer}"
+                    response = BotResponse(content=response_text)
+            except Exception as e:
+                logger.error("list_sessions_error", error=str(e))
+                response = BotResponse(content=f"❌ Failed to list sessions: {str(e)}")
+        else:
+            response = BotResponse(content="❌ This app doesn't support session listing")
+
+        await self._send_response(platform, user_id, response)
+
+    async def _handle_list_models(self, message: UserMessage, session: UserSession, app) -> None:
+        """Handle /models command - List available models (placeholder)."""
+        platform = message.platform
+        user_id = message.user_id
+
+        header = app.get_header(session.app_context)
+        response_text = f"{header}\n\n🤖 Available Models:\n\n• kimi-k2.5 (default)\n• gemini-2.5-pro\n• claude-4-sonnet\n\n💡 Model switching coming soon!"
+        footer = app.get_footer(session.app_context)
+        if footer:
+            response_text += f"\n\n{footer}"
+
+        response = BotResponse(content=response_text)
+        await self._send_response(platform, user_id, response)
+
+    async def _handle_list_agents(self, message: UserMessage, session: UserSession, app) -> None:
+        """Handle /agent command - List available agents (placeholder)."""
+        platform = message.platform
+        user_id = message.user_id
+
+        header = app.get_header(session.app_context)
+        response_text = f"{header}\n\n🕵️ Available Agents:\n\n• build - Code builder and editor\n• ask - Question answering\n• test - Testing and debugging\n\n💡 Agent switching coming soon!"
+        footer = app.get_footer(session.app_context)
+        if footer:
+            response_text += f"\n\n{footer}"
+
+        response = BotResponse(content=response_text)
+        await self._send_response(platform, user_id, response)
 
     async def _handle_terminal_command(self, message: UserMessage, session: UserSession) -> None:
         """Handle terminal-specific commands."""
