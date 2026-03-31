@@ -24,8 +24,11 @@ class SetupWizard:
 
     def __init__(self):
         self.config = Config()
-        self.config_path = Path.home() / ".openbridge" / "config.yaml"
+        # Use environment variable or default to home directory
+        config_dir = Path(os.getenv("OB_CONFIG", Path.home() / ".openbridge")).parent
+        self.config_path = config_dir / "config.yaml"
         self.auto_start = False
+        self.is_root = os.geteuid() == 0
 
     def run(self, auto_start: bool = False) -> Config:
         """Run the complete setup wizard."""
