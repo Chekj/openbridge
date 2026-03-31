@@ -33,6 +33,8 @@ class TelegramAdapter(BaseAdapter):
             # Add handlers
             self.application.add_handler(CommandHandler("start", self._cmd_start))
             self.application.add_handler(CommandHandler("help", self._cmd_help))
+            self.application.add_handler(CommandHandler("app", self._cmd_app))
+            self.application.add_handler(CommandHandler("close", self._cmd_close))
             self.application.add_handler(CommandHandler("cancel", self._cmd_cancel))
             self.application.add_handler(CommandHandler("status", self._cmd_status))
             self.application.add_handler(CommandHandler("resize", self._cmd_resize))
@@ -61,6 +63,8 @@ class TelegramAdapter(BaseAdapter):
         commands = [
             BotCommand("start", "Start the bot and show welcome message"),
             BotCommand("help", "Show help and available commands"),
+            BotCommand("app", "Show app menu or switch apps"),
+            BotCommand("close", "Exit current app and return to terminal"),
             BotCommand("cancel", "Cancel current operation (Ctrl+C)"),
             BotCommand("status", "Check bot and session status"),
             BotCommand("resize", "Resize terminal (usage: /resize rows cols)"),
@@ -137,6 +141,8 @@ Just type any shell command and it will be executed.
 
 Special commands:
 /help - Show this help
+/app - Show app menu or switch apps
+/close - Exit current app and return to terminal
 /cancel - Cancel current operation
 /resize <rows> <cols> - Resize terminal
 /status - Check session status
@@ -144,9 +150,58 @@ Special commands:
 Tips:
 - Commands are executed in real shell sessions
 - Sessions persist between messages
-- Use Ctrl+C equivalent with /cancel"""
+- Use Ctrl+C equivalent with /cancel
+- Use /app to switch between Terminal and OpenCode"""
 
         await update.message.reply_text(help_text)
+
+    async def _cmd_app(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /app command - pass to router."""
+        user = update.effective_user
+
+        if self.allowed_users and user.id not in self.allowed_users:
+            await update.message.reply_text("You are not authorized.")
+            return
+
+        message = UserMessage(
+            message_id=str(update.message.message_id),
+            user_id=str(user.id),
+            platform="telegram",
+            content=update.message.text,
+            message_type=MessageType.COMMAND,
+            metadata={
+                "chat_id": update.message.chat_id,
+                "username": user.username,
+                "first_name": user.first_name,
+            },
+        )
+
+        if self._message_handler:
+            await self._message_handler(message)
+
+    async def _cmd_close(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /close command - pass to router."""
+        user = update.effective_user
+
+        if self.allowed_users and user.id not in self.allowed_users:
+            await update.message.reply_text("You are not authorized.")
+            return
+
+        message = UserMessage(
+            message_id=str(update.message.message_id),
+            user_id=str(user.id),
+            platform="telegram",
+            content="/close",
+            message_type=MessageType.COMMAND,
+            metadata={
+                "chat_id": update.message.chat_id,
+                "username": user.username,
+                "first_name": user.first_name,
+            },
+        )
+
+        if self._message_handler:
+            await self._message_handler(message)
 
     async def _cmd_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /cancel command - sends Ctrl+C to terminal."""
