@@ -51,8 +51,12 @@ class PTYSession:
 
     async def _read_loop(self) -> None:
         try:
+            loop = asyncio.get_event_loop()
             while self.active:
-                readable, _, _ = select.select([self.master_fd], [], [], 0.1)
+                # Run select in executor to avoid blocking event loop
+                readable, _, _ = await loop.run_in_executor(
+                    None, lambda: select.select([self.master_fd], [], [], 0.1)
+                )
                 if readable:
                     try:
                         data = os.read(self.master_fd, 8192)
