@@ -493,15 +493,14 @@ run_setup() {
     print_header "=========================================="
     echo ""
     
+    # Run setup as current user (root if IS_ROOT)
+    # The setup wizard will handle root vs non-root internally
+    source "$VENV_DIR/bin/activate"
     if [ "$IS_ROOT" = true ]; then
-        # Run setup as service user
-        su -s /bin/bash "$SERVICE_USER" -c "
-            source $VENV_DIR/bin/activate
-            $VENV_DIR/bin/openbridge setup --auto-start
-        "
+        # When root, setup wizard runs as root but will set correct ownership
+        "$VENV_DIR/bin/openbridge" setup --auto-start
     else
-        # Run setup as current user
-        source "$VENV_DIR/bin/activate"
+        # When regular user, setup wizard runs as that user
         "$BIN_DIR/openbridge" setup --auto-start
     fi
 }
