@@ -193,15 +193,15 @@ class MessageRouter:
             # Execute command
             pty_session = await self.engine.execute_command(session_id, command)
 
-            # Wait for output (longer for AI tools)
-            await asyncio.sleep(3)
+            # Wait for output (opencode needs 8-10 seconds)
+            await asyncio.sleep(8)
 
             # Get output
             output = await self.engine.get_output(session_id, clear=True)
 
             if not output:
                 # Try waiting a bit more
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)
                 output = await self.engine.get_output(session_id, clear=True)
 
             if output:

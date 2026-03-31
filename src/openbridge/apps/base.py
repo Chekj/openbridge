@@ -55,6 +55,11 @@ class App(ABC):
         # Replace placeholders
         for key, value in context.items():
             header = header.replace(f"{{{key}}}", str(value))
+        # Handle session_id specially if still in template
+        if "{session_id}" in header:
+            session_id = context.get("session_id", "")
+            display_id = session_id[:8] if session_id else "new"
+            header = header.replace("{session_id}", display_id)
         return header
 
     def get_footer(self, context: Dict[str, Any]) -> str:

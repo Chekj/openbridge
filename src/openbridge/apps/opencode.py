@@ -66,7 +66,6 @@ class OpenCodeApp(App):
         try:
             lines = output.strip().split("\n")
             text_parts = []
-            session_info = {}
 
             for line in lines:
                 line = line.strip()
@@ -78,18 +77,18 @@ class OpenCodeApp(App):
                     event_type = event.get("type", "")
 
                     if event_type == "text":
-                        content = event.get("content", "")
-                        if content:
-                            text_parts.append(content)
+                        part = event.get("part", {})
+                        text = part.get("text", "")
+                        if text:
+                            text_parts.append(text)
                     elif event_type == "step_start":
-                        # Optional: could show thinking status
-                        pass
+                        # Extract session ID from step_start
+                        session_id = event.get("sessionID", "")
+                        if session_id:
+                            context["session_id"] = session_id
                     elif event_type == "step_finish":
-                        # Extract session info if available
-                        if "session" in event:
-                            session_info = event.get("session", {})
-                            if "id" in session_info:
-                                context["session_id"] = session_info["id"]
+                        # Keep session ID if already set
+                        pass
                     elif event_type == "error":
                         error_msg = event.get("message", "Unknown error")
                         return f"❌ Error: {error_msg}"
