@@ -73,6 +73,14 @@ class OpenCodeApp(App):
                 if not line:
                     continue
 
+                # Skip shell prompts and command lines
+                if line.startswith("root@") and ("#" in line or "$" in line):
+                    continue
+                if "opencode run" in line and ("--format" in line or "--continue" in line):
+                    continue
+                if line.startswith("<ode run"):  # Partial command line
+                    continue
+
                 try:
                     event = json.loads(line)
                     event_type = event.get("type", "")
@@ -95,8 +103,8 @@ class OpenCodeApp(App):
                         return f"❌ Error: {error_msg}"
 
                 except json.JSONDecodeError:
-                    # Not JSON, treat as plain text
-                    text_parts.append(line)
+                    # Not JSON, skip shell output
+                    continue
 
             result = "".join(text_parts)
 
