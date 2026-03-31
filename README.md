@@ -24,10 +24,16 @@ Connect to your computer's terminal from anywhere using Telegram, Discord, Whats
 
 ### One-Command Installation 🚀
 
-One command downloads, installs, configures, and starts OpenBridge:
-
+**For regular user (recommended):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Chekj/openbridge/main/scripts/install.sh | bash
+```
+
+**For system-wide installation (as root):**
+```bash
+# Download first, then run (required for interactive setup)
+curl -fsSL https://raw.githubusercontent.com/Chekj/openbridge/main/scripts/install.sh -o install.sh
+sudo bash install.sh
 ```
 
 **That's it!** The installer will:
