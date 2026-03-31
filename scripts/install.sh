@@ -146,6 +146,75 @@ check_existing_installation() {
     fi
 }
 
+# Select which user OpenBridge should run as
+select_service_user() {
+    # Only relevant when running as root for system-wide install
+    if [ "$IS_ROOT" != true ]; then
+        SERVICE_USER="$USER"
+        CREATE_SERVICE_USER=false
+        return 0
+    fi
+    
+    # In non-interactive mode, use default
+    if ! is_interactive; then
+        SERVICE_USER="openbridge"
+        CREATE_SERVICE_USER=true
+        print_info "Non-interactive mode: using default 'openbridge' user"
+        return 0
+    fi
+    
+    echo ""
+    echo "Which user should OpenBridge run as?"
+    echo ""
+    echo "  1) Create new 'openbridge' user (Recommended - Secure)"
+    echo "     - Isolated service account with minimal privileges"
+    echo ""
+    echo "  2) Use 'root' user (Full system access)"
+    echo "     - All commands run as root"
+    echo ""
+    echo "  3) Use another existing user"
+    echo "     - Specify a username that already exists"
+    echo ""
+    
+    read -p "Enter choice [1-3] (default: 1): " user_choice
+    user_choice=${user_choice:-1}
+    
+    case "$user_choice" in
+        1|"")
+            SERVICE_USER="openbridge"
+            CREATE_SERVICE_USER=true
+            print_info "Using dedicated 'openbridge' service user"
+            ;;
+        2)
+            SERVICE_USER="root"
+            CREATE_SERVICE_USER=false
+            print_info "Using root user"
+            ;;
+        3)
+            read -p "Enter username: " custom_user
+            if id -u "$custom_user" &>/dev/null; then
+                SERVICE_USER="$custom_user"
+                CREATE_SERVICE_USER=false
+                print_info "Using existing user: $SERVICE_USER"
+            else
+                print_error "User '$custom_user' does not exist."
+                print_info "Using default 'openbridge' user instead."
+                SERVICE_USER="openbridge"
+                CREATE_SERVICE_USER=true
+            fi
+            ;;
+        *)
+            print_error "Invalid choice. Using default 'openbridge' user."
+            SERVICE_USER="openbridge"
+            CREATE_SERVICE_USER=true
+            ;;
+    esac
+    
+    # Export for setup wizard
+    export OB_SERVICE_USER="$SERVICE_USER"
+    export OB_CREATE_SERVICE_USER="$CREATE_SERVICE_USER"
+}
+
 # Smart update - keeps config, updates code only
 smart_update() {
     print_step "Updating OpenBridge..."
@@ -223,8 +292,10 @@ full_cleanup() {
     rm -rf "$INSTALL_DIR"
     rm -rf "$CONFIG_DIR"
     
-    # Remove service user (if root install)
-    if [ "$IS_ROOT" = true ]; then
+    # Remove service user only if it's the dedicated openbridge user
+    # and was created by us (not root or custom user)
+    if [ "$IS_ROOT" = true ] && [ "$SERVICE_USER" = "openbridge" ]; then
+        print_info "Removing dedicated service user..."
         userdel "$SERVICE_USER" 2>/dev/null || true
     fi
     
@@ -235,12 +306,27 @@ full_cleanup() {
 setup_service_user() {
     if [ "$IS_ROOT" = true ]; then
         print_step "Setting up service user..."
-        if ! id -u "$SERVICE_USER" &>/dev/null; then
-            useradd -r -s /bin/false -d "$INSTALL_DIR" -c "OpenBridge service" "$SERVICE_USER"
-            print_success "Created user: $SERVICE_USER"
+        
+        # Check if we need to create the user or use existing
+        if [ "$CREATE_SERVICE_USER" = true ]; then
+            if ! id -u "$SERVICE_USER" &>/dev/null; then
+                # Create system user with no login shell
+                useradd -r -s /bin/false -d "$INSTALL_DIR" -c "OpenBridge service" "$SERVICE_USER"
+                print_success "Created service user: $SERVICE_USER"
+            else
+                print_info "User $SERVICE_USER already exists"
+            fi
         else
-            print_info "User $SERVICE_USER already exists"
+            print_info "Using existing user: $SERVICE_USER"
+            # Verify user exists
+            if ! id -u "$SERVICE_USER" &>/dev/null; then
+                print_error "User '$SERVICE_USER' does not exist!"
+                exit 1
+            fi
         fi
+        
+        # Get user's primary group
+        SERVICE_GROUP=$(id -gn "$SERVICE_USER" 2>/dev/null || echo "$SERVICE_USER")
     fi
 }
 
@@ -254,8 +340,19 @@ setup_directories() {
     mkdir -p "$CONFIG_DIR/sessions"
     
     if [ "$IS_ROOT" = true ]; then
-        chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
-        chown -R "$SERVICE_USER:$SERVICE_USER" "$CONFIG_DIR"
+        # Get service user's primary group
+        SERVICE_GROUP=$(id -gn "$SERVICE_USER" 2>/dev/null || echo "$SERVICE_USER")
+        
+        # Set ownership based on user type
+        if [ "$SERVICE_USER" = "root" ]; then
+            # Root user - no ownership changes needed
+            print_info "Running as root - directories owned by root"
+        else
+            # Service or custom user - set proper ownership
+            chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
+            chown -R "$SERVICE_USER:$SERVICE_GROUP" "$CONFIG_DIR"
+            print_success "Directories owned by $SERVICE_USER:$SERVICE_GROUP"
+        fi
     fi
     
     print_success "Directories created"
@@ -557,6 +654,9 @@ main() {
     
     # Check for existing installation and handle accordingly
     check_existing_installation
+    
+    # Select service user (only applies when root)
+    select_service_user
     
     check_python
     check_pip

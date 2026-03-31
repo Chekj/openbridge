@@ -24,17 +24,21 @@ Connect to your computer's terminal from anywhere using Telegram, Discord, Whats
 
 ### One-Command Installation 🚀
 
-**For regular user (recommended):**
+**Option 1: Regular User Install (Local)**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Chekj/openbridge/main/scripts/install.sh | bash
 ```
+Installs to `~/.local/share/openbridge` and runs as your current user.
 
-**For system-wide installation (as root):**
+**Option 2: System-Wide Install (Root)**
 ```bash
-# Download first, then run (required for interactive setup)
 curl -fsSL https://raw.githubusercontent.com/Chekj/openbridge/main/scripts/install.sh -o install.sh
 sudo bash install.sh
 ```
+Installs to `/opt/openbridge` and runs as a system service. You'll be asked to choose:
+- **Create 'openbridge' user** (Recommended) - Secure, isolated service account
+- **Use 'root' user** - Full system access, convenient but less secure
+- **Use custom user** - Specify an existing username
 
 **That's it!** The installer will:
 1. ✓ Download and install OpenBridge
@@ -134,6 +138,36 @@ docker run -d \
   -v ~/.openbridge:/data \
   -p 8080:8080 \
   openbridge/openbridge:latest
+```
+
+## Service User Selection
+
+When installing system-wide (with `sudo`), you can choose which user runs the OpenBridge service:
+
+### Option 1: Dedicated 'openbridge' User (Recommended)
+Creates a new system user specifically for OpenBridge:
+- ✅ **Most Secure** - Minimal system privileges
+- ✅ **Isolated** - Cannot login, limited to OpenBridge directories
+- ✅ **Best for** Production servers, shared systems
+
+### Option 2: Root User
+Runs OpenBridge as the root user:
+- ⚡ **Full Access** - No permission restrictions
+- ⚡ **Convenient** - All commands work without sudo
+- ⚠️ **Less Secure** - Anyone with bot access controls entire system
+- ✅ **Best for** Testing, development, single-user systems
+
+### Option 3: Custom User
+Uses an existing user account:
+- 🔧 **Flexible** - Inherits user's existing permissions
+- 🔧 **Integrated** - Good for running alongside other services
+- ✅ **Best for** Shared systems with specific access needs
+
+**Changing User After Installation:**
+```bash
+# Reinstall with different user
+sudo bash install.sh
+# Select "Clean Install" then choose different user option
 ```
 
 ## Systemd Service

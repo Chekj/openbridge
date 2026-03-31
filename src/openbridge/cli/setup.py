@@ -372,13 +372,24 @@ Config Location: {self.config_path}
         # Determine sudo command (skip if already root)
         sudo_cmd = [] if self.is_root else ["sudo"]
 
-        # Use appropriate user and paths based on installation type
-        if self.is_root:
-            service_user = "openbridge"
-            install_dir = "/opt/openbridge"
+        # Get service user from environment variable set by install.sh
+        # or use default behavior
+        service_user = os.environ.get("OB_SERVICE_USER", None)
+
+        # If not set by install.sh, use defaults based on installation type
+        if service_user is None:
+            if self.is_root:
+                service_user = "openbridge"
+                install_dir = "/opt/openbridge"
+            else:
+                service_user = os.getenv("USER")
+                install_dir = Path.home() / ".local/share/openbridge"
         else:
-            service_user = os.getenv("USER")
-            install_dir = Path.home() / ".local/share/openbridge"
+            # Use values from install.sh
+            if self.is_root:
+                install_dir = "/opt/openbridge"
+            else:
+                install_dir = Path.home() / ".local/share/openbridge"
 
         # Create service content
         service_content = f"""[Unit]
