@@ -133,7 +133,7 @@ class PTYManager:
                     os.chdir(cwd)
                 if env:
                     os.environ.update(env)
-                shell = shell or os.environ.get("SHELL", "/bin/bash")
+                shell = shell or "/bin/bash"
                 os.execlp(shell, shell)
             else:
                 os.close(slave_fd)
