@@ -38,6 +38,11 @@ class TelegramAdapter(BaseAdapter):
             self.application.add_handler(CommandHandler("cancel", self._cmd_cancel))
             self.application.add_handler(CommandHandler("status", self._cmd_status))
             self.application.add_handler(CommandHandler("resize", self._cmd_resize))
+            # OpenCode-specific commands
+            self.application.add_handler(CommandHandler("new", self._cmd_opencode_new))
+            self.application.add_handler(CommandHandler("sessions", self._cmd_opencode_sessions))
+            self.application.add_handler(CommandHandler("models", self._cmd_opencode_models))
+            self.application.add_handler(CommandHandler("agent", self._cmd_opencode_agent))
             self.application.add_handler(
                 MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_text)
             )
@@ -68,6 +73,10 @@ class TelegramAdapter(BaseAdapter):
             BotCommand("cancel", "Cancel current operation (Ctrl+C)"),
             BotCommand("status", "Check bot and session status"),
             BotCommand("resize", "Resize terminal (usage: /resize rows cols)"),
+            BotCommand("new", "Create new OpenCode session"),
+            BotCommand("sessions", "List all OpenCode sessions"),
+            BotCommand("models", "Show available AI models"),
+            BotCommand("agent", "Show available agents"),
         ]
         await self.application.bot.set_my_commands(commands)
 
@@ -285,6 +294,106 @@ Send any command to execute it in your terminal.""".format(user.first_name)
                 )
         else:
             await update.message.reply_text("Usage: /resize <rows> <cols>\nExample: /resize 24 80")
+
+    async def _cmd_opencode_new(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /new command - Create new OpenCode session."""
+        user = update.effective_user
+
+        if self.allowed_users and user.id not in self.allowed_users:
+            await update.message.reply_text("You are not authorized.")
+            return
+
+        message = UserMessage(
+            message_id=str(update.message.message_id),
+            user_id=str(user.id),
+            platform="telegram",
+            content="/new",
+            message_type=MessageType.COMMAND,
+            metadata={
+                "chat_id": update.message.chat_id,
+                "username": user.username,
+                "first_name": user.first_name,
+            },
+        )
+
+        if self._message_handler:
+            await self._message_handler(message)
+
+    async def _cmd_opencode_sessions(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Handle /sessions command - List OpenCode sessions."""
+        user = update.effective_user
+
+        if self.allowed_users and user.id not in self.allowed_users:
+            await update.message.reply_text("You are not authorized.")
+            return
+
+        message = UserMessage(
+            message_id=str(update.message.message_id),
+            user_id=str(user.id),
+            platform="telegram",
+            content="/sessions",
+            message_type=MessageType.COMMAND,
+            metadata={
+                "chat_id": update.message.chat_id,
+                "username": user.username,
+                "first_name": user.first_name,
+            },
+        )
+
+        if self._message_handler:
+            await self._message_handler(message)
+
+    async def _cmd_opencode_models(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Handle /models command - List available models."""
+        user = update.effective_user
+
+        if self.allowed_users and user.id not in self.allowed_users:
+            await update.message.reply_text("You are not authorized.")
+            return
+
+        message = UserMessage(
+            message_id=str(update.message.message_id),
+            user_id=str(user.id),
+            platform="telegram",
+            content="/models",
+            message_type=MessageType.COMMAND,
+            metadata={
+                "chat_id": update.message.chat_id,
+                "username": user.username,
+                "first_name": user.first_name,
+            },
+        )
+
+        if self._message_handler:
+            await self._message_handler(message)
+
+    async def _cmd_opencode_agent(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /agent command - List available agents."""
+        user = update.effective_user
+
+        if self.allowed_users and user.id not in self.allowed_users:
+            await update.message.reply_text("You are not authorized.")
+            return
+
+        message = UserMessage(
+            message_id=str(update.message.message_id),
+            user_id=str(user.id),
+            platform="telegram",
+            content="/agent",
+            message_type=MessageType.COMMAND,
+            metadata={
+                "chat_id": update.message.chat_id,
+                "username": user.username,
+                "first_name": user.first_name,
+            },
+        )
+
+        if self._message_handler:
+            await self._message_handler(message)
 
     async def _handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user = update.effective_user
