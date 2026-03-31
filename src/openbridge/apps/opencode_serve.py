@@ -245,6 +245,9 @@ class OpenCodeServeApp(App):
             session = await self.create_session(title="OpenBridge Session")
             session_id = session.get("id")
             context["session_id"] = session_id
+            # Set default model if not already set
+            context.setdefault("current_model_provider", "opencode-go")
+            context.setdefault("current_model_id", "kimi-k2.5")
             logger.info("opencode_session_created", session_id=session_id)
 
         # Send message

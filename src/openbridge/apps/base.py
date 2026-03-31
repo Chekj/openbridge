@@ -60,6 +60,13 @@ class App(ABC):
             session_id = context.get("session_id", "")
             display_id = session_id[:8] if session_id else "new"
             header = header.replace("{session_id}", display_id)
+        # Handle model placeholders with defaults
+        if "{current_model_provider}" in header:
+            provider = context.get("current_model_provider", "auto")
+            header = header.replace("{current_model_provider}", provider)
+        if "{current_model_id}" in header:
+            model = context.get("current_model_id", "default")
+            header = header.replace("{current_model_id}", model)
         return header
 
     def get_footer(self, context: Dict[str, Any]) -> str:
