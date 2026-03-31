@@ -312,6 +312,16 @@ Config Location: {self.config_path}
         if questionary.confirm("Save this configuration?", default=True).ask():
             self.config.ensure_directories()
             self.config.to_file(self.config_path)
+
+            # If running as root, ensure config is readable by service user
+            if self.is_root:
+                import subprocess
+
+                subprocess.run(
+                    ["chown", "-R", "openbridge:openbridge", str(self.config_path.parent)],
+                    check=False,
+                )
+
             console.print(f"[green]✓ Configuration saved to {self.config_path}[/green]")
         else:
             console.print("[yellow]Configuration not saved. Run setup again to configure.[/yellow]")
