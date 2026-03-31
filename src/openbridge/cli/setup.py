@@ -118,14 +118,48 @@ class SetupWizard:
             ).ask()
 
             if restrict:
+                console.print("")
                 console.print(
-                    "[dim]Enter Telegram user IDs (comma-separated). Leave empty to allow all.[/dim]"
+                    Panel(
+                        "[bold]Important:[/bold] Use [cyan]Numeric User ID[/cyan], NOT username!\n\n"
+                        "[bold]User ID[/bold] = Permanent number (e.g., [green]123456789[/green])\n"
+                        "[bold]Username[/bold] = @handle that can change (e.g., @john_doe)\n\n"
+                        "[dim]Why User ID? It's permanent and cannot be spoofed for better security.[/dim]\n\n"
+                        "[bold]How to find your User ID:[/bold]\n"
+                        "1. Open Telegram\n"
+                        "2. Message: [cyan]@userinfobot[/cyan]\n"
+                        "3. It will reply with your numeric ID\n\n"
+                        "[bold]Example:[/bold] If @userinfobot says 'Id: 123456789', enter: [green]123456789[/green]",
+                        border_style="yellow",
+                    )
                 )
-                console.print("[dim]Find your ID by messaging @userinfobot on Telegram[/dim]")
-                users = questionary.text("Allowed user IDs:").ask()
+                console.print("")
+                users = questionary.text(
+                    "Enter numeric User IDs (comma-separated):",
+                    instruction="Example: 123456789, 987654321",
+                ).ask()
                 if users:
-                    user_ids = [int(x.strip()) for x in users.split(",") if x.strip().isdigit()]
-                    self.config.adapters["telegram"].allowed_users = user_ids
+                    user_ids = []
+                    for user_input in users.split(","):
+                        user_input = user_input.strip()
+                        # Remove @ if present
+                        if user_input.startswith("@"):
+                            user_input = user_input[1:]
+                        # Try to convert to int (User ID)
+                        if user_input.isdigit():
+                            user_ids.append(int(user_input))
+                        elif user_input:
+                            console.print(
+                                f"[yellow]⚠ Skipping '{user_input}' - usernames not supported. Use numeric User ID instead.[/yellow]"
+                            )
+
+                    if user_ids:
+                        self.config.adapters["telegram"].allowed_users = user_ids
+                        console.print(f"[green]✓ Added {len(user_ids)} authorized user(s)[/green]")
+                    else:
+                        console.print(
+                            "[yellow]⚠ No valid User IDs provided - allowing all users[/yellow]"
+                        )
 
             console.print("[green]✓ Telegram configured[/green]")
 
