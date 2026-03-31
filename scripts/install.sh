@@ -1,10 +1,10 @@
 #!/bin/bash
 # OpenBridge One-Line Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/username/openbridge/main/scripts/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/Chekj/openbridge/main/scripts/install.sh | bash
 
 set -e
 
-REPO_URL="https://github.com/username/openbridge"
+REPO_URL="https://github.com/Chekj/openbridge"
 INSTALL_DIR="$HOME/.local/share/openbridge"
 BIN_DIR="$HOME/.local/bin"
 VENV_DIR="$INSTALL_DIR/venv"

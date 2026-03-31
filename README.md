@@ -25,14 +25,14 @@ Connect to your computer's terminal from anywhere using Telegram, Discord, Whats
 ### One-Line Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yourusername/openbridge/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Chekj/openbridge/main/scripts/install.sh | bash
 ```
 
 ### Manual Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/openbridge.git
+git clone https://github.com/Chekj/openbridge.git
 cd openbridge
 
 # Create virtual environment
@@ -155,7 +155,7 @@ Host System Shell
 
 ```bash
 # Setup development environment
-git clone https://github.com/yourusername/openbridge.git
+git clone https://github.com/Chekj/openbridge.git
 cd openbridge
 python3 -m venv venv
 source venv/bin/activate
@@ -230,8 +230,8 @@ MIT License - see [LICENSE](LICENSE) file
 ## Support
 
 - Documentation: https://docs.openbridge.dev
-- Issues: https://github.com/yourusername/openbridge/issues
-- Discussions: https://github.com/yourusername/openbridge/discussions
+- Issues: https://github.com/Chekj/openbridge/issues
+- Discussions: https://github.com/Chekj/openbridge/discussions
 
 ---
 

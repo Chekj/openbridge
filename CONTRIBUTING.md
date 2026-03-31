@@ -42,7 +42,7 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 
 ```bash
 # Clone your fork
-git clone https://github.com/yourusername/openbridge.git
+git clone https://github.com/Chekj/openbridge.git
 cd openbridge
 
 # Create virtual environment
