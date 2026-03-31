@@ -142,15 +142,16 @@ setup_directories() {
 download_openbridge() {
     print_step "Downloading OpenBridge..."
     
+    # Always fix git ownership issues first if running as root
+    if [ "$IS_ROOT" = true ] && [ -d "$INSTALL_DIR/.git" ]; then
+        git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+    fi
+    
     if [ -d "$INSTALL_DIR/.git" ]; then
         print_info "Updating existing installation..."
         cd "$INSTALL_DIR"
-        # Fix git ownership issues when running as root
-        if [ "$IS_ROOT" = true ]; then
-            git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
-        fi
         # Try to pull, if it fails, remove and re-clone
-        if ! git pull 2>/dev/null; then
+        if ! git pull; then
             print_info "Update failed, re-cloning..."
             cd /
             rm -rf "$INSTALL_DIR"
