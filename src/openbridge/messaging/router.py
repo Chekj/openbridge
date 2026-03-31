@@ -99,6 +99,14 @@ class MessageRouter:
                         ),
                     )
                 return
+            elif content.startswith("/permreply "):
+                # Handle permission reply from user
+                parts = content.split(" ", 2)
+                if len(parts) >= 3:
+                    perm_id = parts[1]
+                    action = parts[2]  # once, always, reject
+                    await self._handle_permission_reply(message, session, perm_id, action)
+                return
 
             # Check if we're in app mode
             if session.current_app != "terminal":
@@ -264,6 +272,35 @@ class MessageRouter:
                 # Use HTTP API mode
                 result = await app.send_message(command, session.app_context)
                 parsed = app.parse_output(result, session.app_context)
+
+                # Check if result is a permission request
+                if isinstance(parsed, dict) and parsed.get("type") == "permission_request":
+                    # Check if permission is already allowed
+                    if hasattr(app, "_is_permission_allowed") and app._is_permission_allowed(
+                        parsed, session.app_context
+                    ):
+                        # Auto-allow and retry
+                        await app.send_permission_reply(parsed["id"], "once", session.app_context)
+                        # Retry the command
+                        result = await app.send_message(command, session.app_context)
+                        parsed = app.parse_output(result, session.app_context)
+                    else:
+                        # Store pending permission in session context
+                        session.app_context["pending_permission"] = parsed
+
+                        # Send permission request to user via adapter
+                        adapter = self._adapters.get(platform)
+                        if adapter and hasattr(adapter, "send_permission_request"):
+                            await adapter.send_permission_request(
+                                user_id=user_id,
+                                permission=parsed,
+                                session_id=session.app_context.get("session_id", ""),
+                            )
+                            # Don't continue - wait for permission response
+                            return
+                        else:
+                            # Adapter doesn't support permissions
+                            parsed = "❌ Permission required but adapter doesn't support interactive permissions.\nPlease run this command directly in OpenCode."
             else:
                 # Use PTY/CLI mode
                 pty_session = await self.engine.execute_command(session_id, command)
@@ -301,7 +338,11 @@ class MessageRouter:
 
                 parsed = app.parse_output(output, session.app_context)
 
-            # Build full response
+            # Build full response (only if not handled above)
+            if isinstance(parsed, dict):
+                # Convert dict to string if needed
+                parsed = str(parsed)
+
             header = app.get_header(session.app_context)
             footer = app.get_footer(session.app_context)
 
@@ -542,6 +583,73 @@ class MessageRouter:
             response_text += f"\n\n{footer}"
 
         response = BotResponse(content=response_text)
+        await self._send_response(platform, user_id, response)
+
+    async def _handle_permission_reply(
+        self, message: UserMessage, session: UserSession, permission_id: str, action: str
+    ) -> None:
+        """Handle permission reply from user."""
+        platform = message.platform
+        user_id = message.user_id
+
+        app = self.app_registry.get(session.current_app)
+        if not app or not hasattr(app, "send_permission_reply"):
+            await self._send_response(
+                platform,
+                user_id,
+                BotResponse(content="❌ Permission handling requires OpenCode app."),
+            )
+            return
+
+        try:
+            # Send permission reply to OpenCode
+            success = await app.send_permission_reply(permission_id, action, session.app_context)
+
+            if success:
+                # If "always", add patterns to allowed list
+                if action == "always":
+                    # Get pending permission details from context if available
+                    pending_perm = session.app_context.get("pending_permission")
+                    if pending_perm and pending_perm.get("id") == permission_id:
+                        patterns = pending_perm.get("patterns", [])
+                        for pattern in patterns:
+                            await app.add_allowed_pattern(pattern, session.app_context)
+                        logger.info(
+                            "added_allowed_patterns",
+                            patterns=patterns,
+                            session_id=session.session_id,
+                        )
+
+                # Clear pending permission
+                if "pending_permission" in session.app_context:
+                    del session.app_context["pending_permission"]
+
+                # Send confirmation
+                action_text = {
+                    "once": "Allowed once",
+                    "always": "Always allowed",
+                    "reject": "Rejected",
+                }
+                header = app.get_header(session.app_context)
+                response_text = (
+                    f"{header}\n\n✅ Permission {action_text.get(action, action)}. Continuing..."
+                )
+                footer = app.get_footer(session.app_context)
+                if footer:
+                    response_text += f"\n\n{footer}"
+
+                response = BotResponse(content=response_text)
+            else:
+                response = BotResponse(
+                    content="❌ Failed to send permission reply. Please try again."
+                )
+
+        except Exception as e:
+            logger.error(
+                "permission_reply_error", error=str(e), permission_id=permission_id, action=action
+            )
+            response = BotResponse(content=f"❌ Error handling permission: {str(e)}")
+
         await self._send_response(platform, user_id, response)
 
     async def _handle_terminal_command(self, message: UserMessage, session: UserSession) -> None:

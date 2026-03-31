@@ -1,5 +1,6 @@
 """OpenCode app integration using serve mode (HTTP API)."""
 
+import fnmatch
 import json
 import os
 import re
@@ -308,27 +309,103 @@ class OpenCodeServeApp(App):
             logger.error("opencode_json_parse_error", error=str(e), text=response_text[:500])
             return {"error": f"Invalid JSON response: {str(e)}"}
 
-    def parse_output(self, output: Any, context: Dict[str, Any]) -> str:
-        """Parse OpenCode HTTP API response."""
+    def parse_output(self, output: Any, context: Dict[str, Any]) -> Any:
+        """Parse OpenCode HTTP API response. Detects permission requests."""
         if isinstance(output, dict) and "error" in output:
             return f"❌ Error: {output['error']}"
 
         if not isinstance(output, dict):
             return str(output)
 
-        # Extract text from response parts
-        text_parts = []
-
-        # Response format: { "info": Message, "parts": Part[] }
+        # Check for permission request in parts
         if "parts" in output:
             for part in output["parts"]:
-                if part.get("type") == "text":
-                    text_parts.append(part.get("text", ""))
+                if part.get("type") == "permission":
+                    # Return permission request structure
+                    return {
+                        "type": "permission_request",
+                        "permission": part.get("permission"),
+                        "patterns": part.get("patterns", []),
+                        "id": part.get("id"),
+                        "always": part.get("always", []),
+                    }
+
+        # Extract text from response parts
+        text_parts = []
+        for part in output.get("parts", []):
+            if part.get("type") == "text":
+                text_parts.append(part.get("text", ""))
 
         result = "\n".join(text_parts)
         result = self._clean_output(result)
 
         return result if result.strip() else "OpenCode processed your request."
+
+    def _is_permission_allowed(self, permission: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """Check if permission matches allowed patterns in context."""
+        allowed_patterns = context.get("allowed_permission_patterns", [])
+        patterns = permission.get("patterns", [])
+
+        for pattern in patterns:
+            for allowed in allowed_patterns:
+                if self._pattern_matches(pattern, allowed):
+                    return True
+        return False
+
+    def _pattern_matches(self, pattern: str, allowed: str) -> bool:
+        """Check if a pattern matches an allowed pattern (supports wildcards)."""
+        import fnmatch
+
+        return fnmatch.fnmatch(pattern, allowed) or fnmatch.fnmatch(allowed, pattern)
+
+    async def send_permission_reply(
+        self,
+        permission_id: str,
+        reply: str,  # "once", "always", "reject"
+        context: Dict[str, Any],
+    ) -> bool:
+        """Send permission reply to OpenCode."""
+        try:
+            url = f"/permission/{permission_id}/reply"
+            body = {"reply": reply}
+
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, lambda: self._request("POST", url, json=body)
+            )
+
+            if response.status_code == 200:
+                logger.info("permission_replied", permission_id=permission_id, reply=reply)
+
+                # If "always", store the pattern in context
+                if reply == "always":
+                    # Get the permission details first
+                    # For now, we'll add a generic pattern
+                    if "allowed_permission_patterns" not in context:
+                        context["allowed_permission_patterns"] = []
+                    # The actual pattern should be retrieved from the permission
+                    # This is handled by the router which has the permission details
+
+                return True
+            else:
+                logger.error(
+                    "permission_reply_failed",
+                    permission_id=permission_id,
+                    status=response.status_code,
+                    body=response.text[:200],
+                )
+                return False
+        except Exception as e:
+            logger.error("permission_reply_error", permission_id=permission_id, error=str(e))
+            return False
+
+    async def add_allowed_pattern(self, pattern: str, context: Dict[str, Any]) -> None:
+        """Add a pattern to allowed permissions for this session."""
+        if "allowed_permission_patterns" not in context:
+            context["allowed_permission_patterns"] = []
+        if pattern not in context["allowed_permission_patterns"]:
+            context["allowed_permission_patterns"].append(pattern)
+            logger.info("added_allowed_pattern", pattern=pattern)
 
     def _clean_output(self, text: str) -> str:
         """Clean up opencode output."""

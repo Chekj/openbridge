@@ -557,5 +557,91 @@ Send any command to execute it in your terminal.""".format(user.first_name)
                         await self._message_handler(message)
                         await query.edit_message_text(f"🔄 Switching to session...")
 
+        elif callback_data.startswith("perm:"):
+            # Handle permission response
+            parts = callback_data.split(":")
+            if len(parts) >= 4:
+                action = parts[1]  # once, always, reject
+                perm_id = parts[2]
+                session_id = parts[3]
+
+                # Map action to OpenCode format
+                reply_map = {"once": "once", "always": "always", "reject": "reject"}
+
+                # Create message to handle permission reply
+                message = UserMessage(
+                    message_id=str(query.message.message_id),
+                    user_id=str(user.id),
+                    platform="telegram",
+                    content=f"/permreply {perm_id} {reply_map[action]}",
+                    message_type=MessageType.COMMAND,
+                    metadata={
+                        "chat_id": query.message.chat_id,
+                        "username": user.username,
+                        "first_name": user.first_name,
+                        "permission_id": perm_id,
+                        "permission_action": reply_map[action],
+                        "session_id": session_id,
+                    },
+                )
+
+                if self._message_handler:
+                    await self._message_handler(message)
+                    action_text = {
+                        "once": "✅ Allowed once",
+                        "always": "✅✅ Always allowed",
+                        "reject": "❌ Rejected",
+                    }
+                    await query.edit_message_text(
+                        f"{action_text.get(action, 'Processed')}. Continuing..."
+                    )
+
+    async def send_permission_request(
+        self,
+        user_id: str,
+        permission: dict,
+        session_id: str,
+    ) -> None:
+        """Send permission request with inline keyboard buttons."""
+        perm_type = permission.get("permission", "Unknown")
+        patterns = permission.get("patterns", [])
+        perm_id = permission.get("id", "")
+
+        # Format patterns for display
+        patterns_text = "\n".join([f"  • {p}" for p in patterns[:5]])  # Show max 5
+        if len(patterns) > 5:
+            patterns_text += f"\n  ... and {len(patterns) - 5} more"
+
+        text = f"""🔒 **Permission Required**
+
+**Action:** `{perm_type}`
+**Patterns:**
+{patterns_text}
+
+Allow this action?"""
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "✅ Allow Once", callback_data=f"perm:once:{perm_id}:{session_id}"
+                ),
+                InlineKeyboardButton(
+                    "✅✅ Always", callback_data=f"perm:always:{perm_id}:{session_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "❌ Reject", callback_data=f"perm:reject:{perm_id}:{session_id}"
+                )
+            ],
+        ]
+
+        await self.application.bot.send_message(
+            chat_id=user_id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
     def get_user_info(self, user_id: str) -> dict[str, Any]:
         return {"user_id": user_id, "platform": "telegram"}
