@@ -101,7 +101,7 @@ class AppRegistry:
         """Create app instance from manifest."""
         # Import here to avoid circular imports
         from openbridge.apps.terminal import TerminalApp
-        from openbridge.apps.opencode import OpenCodeApp
+        from openbridge.apps.opencode_serve import OpenCodeApp
 
         app_type = manifest.command.get("type", "cli")
 

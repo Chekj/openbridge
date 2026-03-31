@@ -189,64 +189,60 @@ class MessageRouter:
         await self._send_response(platform, user_id, BotResponse(content=thinking_msg))
 
         try:
-            # Execute command
-            pty_session = await self.engine.execute_command(session_id, command)
+            # Check if app has send_message method (serve mode)
+            if hasattr(app, "send_message") and callable(getattr(app, "send_message")):
+                # Use HTTP API mode
+                result = await app.send_message(command, session.app_context)
+                parsed = app.parse_output(result, session.app_context)
+            else:
+                # Use PTY/CLI mode
+                pty_session = await self.engine.execute_command(session_id, command)
 
-            # Poll for output with dynamic waiting
-            output = ""
-            max_wait_time = 120  # Maximum 2 minutes for long tasks
-            poll_interval = 0.5
-            total_waited = 0
-            no_output_count = 0
+                # Poll for output with dynamic waiting
+                output = ""
+                max_wait_time = 120  # Maximum 2 minutes for long tasks
+                poll_interval = 0.5
+                total_waited = 0
+                no_output_count = 0
 
-            while total_waited < max_wait_time:
-                await asyncio.sleep(poll_interval)
-                total_waited += poll_interval
+                while total_waited < max_wait_time:
+                    await asyncio.sleep(poll_interval)
+                    total_waited += poll_interval
 
-                # Check for new output
-                new_output = await self.engine.get_output(session_id, clear=True)
-                if new_output:
-                    output += new_output
-                    no_output_count = 0
+                    # Check for new output
+                    new_output = await self.engine.get_output(session_id, clear=True)
+                    if new_output:
+                        output += new_output
+                        no_output_count = 0
 
-                    # Check if we have a complete response (for opencode JSON)
-                    if app.slug == "opencode" and self._has_complete_response(output):
-                        break
-                else:
-                    no_output_count += 1
+                        # Check if we have a complete response (for opencode JSON)
+                        if app.slug == "opencode" and self._has_complete_response(output):
+                            break
+                    else:
+                        no_output_count += 1
 
-                    # If no output for 3 seconds and we have some output, we're done
-                    if no_output_count >= 6 and output:
-                        break
+                        # If no output for 3 seconds and we have some output, we're done
+                        if no_output_count >= 6 and output:
+                            break
 
-                    # If no output for 10 seconds total, timeout
-                    if no_output_count >= 20:
-                        break
+                        # If no output for 10 seconds total, timeout
+                        if no_output_count >= 20:
+                            break
 
-            if output:
-                # Parse through app
                 parsed = app.parse_output(output, session.app_context)
 
-                # Build full response
-                header = app.get_header(session.app_context)
-                footer = app.get_footer(session.app_context)
+            # Build full response
+            header = app.get_header(session.app_context)
+            footer = app.get_footer(session.app_context)
 
-                full_response = f"{header}\n\n{parsed}"
-                if footer:
-                    full_response += f"\n\n{footer}"
+            full_response = f"{header}\n\n{parsed}"
+            if footer:
+                full_response += f"\n\n{footer}"
 
-                # Format for platform
-                formatted = self._format_for_platform(full_response, platform)
-                response = BotResponse(content=formatted)
-                await self._send_response(platform, user_id, response)
-            else:
-                # No output
-                header = app.get_header(session.app_context)
-                footer = app.get_footer(session.app_context)
-                no_output = f"{header}\n\n⚠️ No response from {app.name}"
-                if footer:
-                    no_output += f"\n\n{footer}"
-                await self._send_response(platform, user_id, BotResponse(content=no_output))
+            # Format for platform
+            formatted = self._format_for_platform(full_response, platform)
+            response = BotResponse(content=formatted)
+            await self._send_response(platform, user_id, response)
 
         except Exception as e:
             logger.error("app_command_error", session_id=session_id, error=str(e))
