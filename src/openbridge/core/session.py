@@ -31,6 +31,9 @@ class UserSession:
     status: SessionStatus = SessionStatus.ACTIVE
     metadata: dict[str, Any] = field(default_factory=dict)
     _activity_callbacks: list[Callable[[], None]] = field(default_factory=list, repr=False)
+    # App mode tracking
+    current_app: str = field(default="terminal")
+    app_context: dict[str, Any] = field(default_factory=dict)
 
     def touch(self) -> None:
         self.last_activity = time.time()
