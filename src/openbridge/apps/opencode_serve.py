@@ -204,6 +204,26 @@ class OpenCodeServeApp(App):
             logger.error("opencode_json_parse_error", error=str(e), text=response_text[:500])
             return {"error": f"Invalid JSON response: {str(e)}"}
 
+    async def _check_pending_permissions(self, session_id: str) -> list:
+        """Check for pending permission requests for a session."""
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, lambda: self._request("GET", "/permission", timeout=5)
+            )
+            if response.status_code == 200:
+                permissions = response.json()
+                # Filter permissions for this session
+                session_perms = [
+                    p
+                    for p in permissions
+                    if p.get("sessionID") == session_id and not p.get("replied", False)
+                ]
+                return session_perms
+        except Exception as e:
+            logger.debug("check_pending_permissions_error", error=str(e))
+        return []
+
     async def create_session(self, title: Optional[str] = None) -> Dict[str, Any]:
         """Create a new OpenCode session."""
         await self.ensure_server_running()
@@ -273,9 +293,42 @@ class OpenCodeServeApp(App):
         logger.info(
             "opencode_sending_request", session_id=session_id, url=f"/session/{session_id}/message"
         )
-        response = await loop.run_in_executor(
-            None, lambda: self._request("POST", f"/session/{session_id}/message", json=body)
-        )
+
+        # First, check if there are any pending permissions before sending
+        pending_perms = await self._check_pending_permissions(session_id)
+        if pending_perms:
+            logger.info("found_pending_permissions_before_send", count=len(pending_perms))
+            return {
+                "type": "permission_request",
+                "permission": pending_perms[0].get("permission"),
+                "patterns": pending_perms[0].get("patterns", []),
+                "id": pending_perms[0].get("id"),
+                "always": pending_perms[0].get("always", []),
+            }
+
+        # Send message with shorter timeout first to detect permissions quickly
+        try:
+            response = await loop.run_in_executor(
+                None,
+                lambda: self._request(
+                    "POST", f"/session/{session_id}/message", json=body, timeout=15
+                ),
+            )
+        except Exception as e:
+            logger.warning("opencode_request_timeout_or_error", error=str(e))
+            # Check if it's a permission-related timeout
+            pending_perms = await self._check_pending_permissions(session_id)
+            if pending_perms:
+                logger.info("found_pending_permissions_after_timeout", count=len(pending_perms))
+                return {
+                    "type": "permission_request",
+                    "permission": pending_perms[0].get("permission"),
+                    "patterns": pending_perms[0].get("patterns", []),
+                    "id": pending_perms[0].get("id"),
+                    "always": pending_perms[0].get("always", []),
+                }
+            # Re-raise the exception if not a permission issue
+            raise
 
         logger.info(
             "opencode_response_raw",
