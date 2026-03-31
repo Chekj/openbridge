@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenBridge - Remote CLI Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=%USER%
+Group=%USER%
+WorkingDirectory=%INSTALL_DIR%
+Environment=PYTHONUNBUFFERED=1
+Environment=OB_CONFIG=%CONFIG_PATH%
+ExecStart=%PYTHON% -m openbridge start
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

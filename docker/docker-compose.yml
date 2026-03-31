@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  openbridge:
+    build: 
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: openbridge
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./config:/app/config
+    environment:
+      - OB_DATA_DIR=/data
+      - OB_TELEGRAM_TOKEN=${TELEGRAM_TOKEN:-}
+      - OB_DISCORD_TOKEN=${DISCORD_TOKEN:-}
+      - OB_LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "openbridge", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

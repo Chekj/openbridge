@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: OpenBridge Documentation
+    url: https://docs.openbridge.dev
+    about: Check the documentation before opening an issue
+  - name: OpenBridge Discussions
+    url: https://github.com/username/openbridge/discussions
+    about: Ask questions and discuss features here
